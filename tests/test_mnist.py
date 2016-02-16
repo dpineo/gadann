@@ -22,11 +22,12 @@
 # DEALINGS IN THE SOFTWARE.
 
 import sys, os
+sys.path = [os.path.dirname(os.getcwd())] + sys.path
 sys.path.append(os.path.abspath(__file__)[:-len('\\tests\\test_mnist.py')])
 
 import gadann
 import gzip
-import cPickle
+import pickle
 import numpy
 import unittest
 import cv2
@@ -45,7 +46,7 @@ class TestMnist(unittest.TestCase):
         with gzip.open(os.path.join(gadann.module_dir, '..', 'data', 'mnist.pkl.gz'),'rb') as file:
             ((self.train_features, self.train_labels),
             (self.valid_features, self.valid_labels),
-            (self.test_features, self.test_labels)) = cPickle.load(file)
+            (self.test_features, self.test_labels)) = pickle.load(file, encoding='latin1')
 
         self.train_features = self.train_features.reshape((50000, 1, 28, 28))
         self.test_features = self.test_features.reshape((10000, 1, 28, 28))
@@ -210,8 +211,8 @@ class TestMnist(unittest.TestCase):
 
         train_accuracy = neural_net_model.evaluate(self.train_features, self.train_labels)
         test_accuracy = neural_net_model.evaluate(self.test_features, self.test_labels)
-        print "Training set accuracy = " + str(train_accuracy*100) + "%"
-        print "Test set accuracy = " + str(test_accuracy*100) + "%"
+        print("Training set accuracy = " + str(train_accuracy*100) + "%")
+        print("Test set accuracy = " + str(test_accuracy*100) + "%")
 
 
     def test_mnist_singlelayer_cudnn(self):
@@ -226,7 +227,7 @@ class TestMnist(unittest.TestCase):
                 gadann.ActivationLayer(n_features=10, activation='softmax')
             ]
         )
-        print model
+        print(model)
 
         #updater=gadann.SgdUpdater(learning_rate=0.001, weight_cost=0)
         #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
@@ -235,7 +236,7 @@ class TestMnist(unittest.TestCase):
         #gadann.ContrastiveDivergenceTrainer(model,updater).train(self.train_features, n_epochs=10)
         gadann.BatchGradientDescentTrainer(model,updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
 
-        print model
+        print(model)
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
@@ -322,7 +323,7 @@ class TestMnist(unittest.TestCase):
         )
 
 
-        print model
+        print(model)
 
         #updater=gadann.SgdUpdater(learning_rate=0.001, weight_cost=0)
         #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
@@ -363,7 +364,7 @@ class TestMnist(unittest.TestCase):
         cv2.imshow("probabilities_squeezed", probabilities_squeezed)
 
 
-        print probabilities_squeezed.min(), probabilities_squeezed.max(), probabilities_squeezed.mean()
+        print(probabilities_squeezed.min(), probabilities_squeezed.max(), probabilities_squeezed.mean())
         mnist_mosaic = numpy.squeeze(mnist_mosaic.get())
         cv2.imshow("mnist_mosaic", mnist_mosaic)
         cv2.waitKey(1)
@@ -376,12 +377,12 @@ class TestMnist(unittest.TestCase):
             #cv2.imshow("prob "+str(i), .1*mnist_mosaic_rgb + probabilities)
         cv2.waitKey(-1)
         
-        print model
+        print(model)
 
 
 #unittest.main(exit=False, verbosity=2)
 
-#TestMnist("test_mnist_singlelayer").debug()
+TestMnist("test_mnist_singlelayer").debug()
 #TestMnist("test_mnist_multilayer").debug()
 #TestMnist("test_mnist_pretrained").debug()
 
@@ -389,7 +390,7 @@ class TestMnist(unittest.TestCase):
 #TestMnist("test_mnist_multilayer_cudnn").debug()
 #TestMnist("test_mnist_pretrained_cudnn").debug()
 
-TestMnist("test_mnist_localization").debug()
+#TestMnist("test_mnist_localization").debug()
 
 #from gadann.utils import profile
 #profile('TestMnist("test_mnist_multilayer").debug()', locals())

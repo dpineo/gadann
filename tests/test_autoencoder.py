@@ -21,64 +21,66 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-from deep_learning import NeuralNetwork, Layer, ContrastiveDivergenceTrainer
-from tensor import Tensor
+import os, sys
+sys.path = [os.path.dirname(os.getcwd())] + sys.path
+
+import gadann
 import gzip
-import cPickle
+import pickle
 import numpy
 import unittest
 
 
 class TestContrastiveDivergenceDescentTrainer(unittest.TestCase):
-	def setUp(self):
-		with gzip.open('mnist.pkl.gz','rb') as file:
-			((self.train_features, self.train_labels),
-			(self.valid_features, self.valid_labels),
-			(self.test_features, self.test_labels)) = cPickle.load(file)
+    def setUp(self):
+        with gzip.open('mnist.pkl.gz', 'rb') as file:
+            ((self.train_features, self.train_labels),
+            (self.valid_features, self.valid_labels),
+            (self.test_features, self.test_labels)) = pickle.load(file, encoding='latin1')
 
-		self.train_features = Tensor(self.train_features, batch_size=100)
-		self.train_labels_onehot = Tensor(self.train_labels, batch_size=100).as_onehot()
-		self.train_labels = Tensor(self.train_labels, batch_size=100)
+        self.train_features = gadann.Tensor(self.train_features)
+        self.train_labels_onehot = gadann.Tensor(self.train_labels).as_onehot()
+        self.train_labels = gadann.Tensor(self.train_labels)
 
-		self.test_features = Tensor(self.test_features, batch_size=100)
-		self.test_labels_onehot = Tensor(self.test_labels, batch_size=100).as_onehot()
-		self.test_labels = Tensor(self.test_labels, batch_size=100)
+        self.test_features = gadann.Tensor(self.test_features)
+        self.test_labels_onehot = gadann.Tensor(self.test_labels).as_onehot()
+        self.test_labels = gadann.Tensor(self.test_labels)
 
-		numpy.random.seed(1234)
+        numpy.random.seed(1234)
 
-	def test_autoencoder_singlelayer(self):
+    def test_autoencoder_singlelayer(self):
 
-		model = NeuralNetwork(
-			layers=[
-				#Layer(feature_shape=(1,1,784), n_features=10, activation='softmax'),
-				Layer(feature_shape=(1,1,784), n_features=500, activation='logistic'),
-				Layer(feature_shape=(500,1,1), n_features=10, activation='softmax')
-			]
-		)
+        model = gadann.NeuralNetwork(
+            layers=[
+                # Layer(feature_shape=(1,1,784), n_features=10, activation='softmax'),
+                gadann.Layer(feature_shape=(1,1,784), n_features=500, activation='logistic'),
+                gadann.Layer(feature_shape=(500,1,1), n_features=10, activation='softmax')
+            ]
+        )
 
-		ContrastiveDivergenceTrainer(learning_rate=.01).train(model, self.train_features,  n_epochs=10)
+        gadann.ContrastiveDivergenceTrainer(learning_rate=.01).train(model, self.train_features,  n_epochs=10)
 
-		train_accuracy = model.evaluate(self.train_features, self.train_labels)
-		test_accuracy = model.evaluate(self.test_features, self.test_labels)
-		print "Training set accuracy = " + str(train_accuracy*100) + "%"
-		print "Test set accuracy = " + str(test_accuracy*100) + "%"
+        train_accuracy = model.evaluate(self.train_features, self.train_labels)
+        test_accuracy = model.evaluate(self.test_features, self.test_labels)
+        print("Training set accuracy = " + str(train_accuracy*100) + "%")
+        print("Test set accuracy = " + str(test_accuracy*100) + "%")
 
-	def test_autoencoder_multilayer(self):
+    def test_autoencoder_multilayer(self):
 
-		model = NeuralNetwork(
-			layers=[
-				Layer(feature_shape=(1,1,784), n_features=500, activation='logistic'),
-				Layer(feature_shape=(500,1,1), n_features=10, activation='softmax')
-			]
-		)
+        model = gadann.NeuralNetwork(
+            layers=[
+                gadann.Layer(feature_shape=(1,1,784), n_features=500, activation='logistic'),
+                gadann.Layer(feature_shape=(500,1,1), n_features=10, activation='softmax')
+            ]
+        )
 
-		#model.train_rbm(self.train_features, n_epochs=10)
-		#model.train_backprop(self.train_features, self.train_labels_onehot, n_epochs=101)
-		
-		train_accuracy = model.evaluate(self.train_features, self.train_labels)
-		test_accuracy = model.evaluate(self.test_features, self.test_labels)
-		print "Training set accuracy = " + str(train_accuracy*100) + "%"
-		print "Test set accuracy = " + str(test_accuracy*100) + "%"
+        # model.train_rbm(self.train_features, n_epochs=10)
+        # model.train_backprop(self.train_features, self.train_labels_onehot, n_epochs=101)
+
+        train_accuracy = model.evaluate(self.train_features, self.train_labels)
+        test_accuracy = model.evaluate(self.test_features, self.test_labels)
+        print("Training set accuracy = " + str(train_accuracy*100) + "%")
+        print("Test set accuracy = " + str(test_accuracy*100) + "%")
 
 
 
