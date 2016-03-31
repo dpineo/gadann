@@ -21,100 +21,73 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
-import pycuda
-import pycuda.curandom
-import pycuda.compiler
-import pycuda.autoinit
-import numpy
-import gzip
-import cPickle
 import time
-import math
-import cv2
-import operator
-import itertools
 import logging
 import copy
 import collections
 
-import kernels
-import tensor
-import stream
-import layer
+from . import kernels
 
 logger = logging.getLogger(__name__)
 
-#--------------------  Trainer  ---------------------
+
+# --------------------  Trainer  ---------------------
 class Trainer(object):
     def __init__(self):
         pass
 
-#--------------------  BatchGradientDescentTrainer  ---------------------
+
+# --------------------  BatchGradientDescentTrainer  ---------------------
 class BatchGradientDescentTrainer(Trainer):
     def __init__(self, model, updater):
         self.model = model
         self.updaters = collections.defaultdict(lambda: copy.deepcopy(updater))
 
-    def train(self, dataset, n_epochs):
+    def train(self, features, labels, n_epochs):
         logger.info("Training (batch gradient descent)")
-        for epoch in xrange(n_epochs):
+        for epoch in range(n_epochs):
             logger.info("Epoch " + str(epoch),)
             start_time = time.time()
-            for n, batch in enumerate(dataset):
-                input_batch = batch['features']
-                target_batch = batch['labels']
-                assert( not numpy.isnan(input_batch.get()).any())
-                assert( not numpy.isnan(target_batch.get()).any())
-                #self.backprop(self.model.layers[0], input_batch, target_batch)
-                self.model.layers[0].backprop(input_batch, target_batch)
+            for n, (batch_features, batch_targets) in enumerate(zip(features, labels)):
 
-            #print self.model.updater.status()
+                # Forward pass
+                layer_activiations = [batch_features]
+                for layer in self.model.layers:
+                    layer_activiations.append(layer.fprop(layer_activiations[-1]))
+
+                # Squared error cost: E=1/2*(t-y)^2 => dE/dy=t-y
+                output_error = layer_activiations[-1] - batch_targets
+
+                # Backward pass
+                for layer in reversed(self.model.layers):
+                    input_error = layer.bprop(output_error, layer_activiations.pop())
+                    grads = layer.error_gradient(layer_activiations[-1], output_error)
+                    self.updaters[layer].update(layer.params, grads)
+                    output_error = input_error
+
             logger.info('  Time={:.3f}'.format(time.time()-start_time))
             for layer in self.model.layers:
                 layer.show()
 
-    def backprop(self, layer, input, target):
-        output = layer.fprop(input)
 
-        if layer.next:
-            output_error = self.backprop(layer.next, output, target)
-        else:
-            output_error = output - target
-
-        input_error = layer.bprop(output_error, output)
-        grads = layer.error_gradient(input, output_error)
-        self.updaters[layer].update(layer.params, grads)
-
-        return input_error
-
-#--------------------  ContrastiveDivergenceTrainer  ---------------------
+# --------------------  ContrastiveDivergenceTrainer  ---------------------
 class ContrastiveDivergenceTrainer(Trainer):
     def __init__(self, model, updater):
         self.model = model
         self.updaters = collections.defaultdict(lambda: copy.deepcopy(updater))
 
-    def train(self, inputs, n_epochs):
+    def train(self, features, n_epochs):
         logger.info("Training (contrastive divergence)")
 
         for layer in self.model.layers:
-            if layer.params == []:
+            if not layer.params:
                 logger.info("training " + layer.name)
                 continue
-            for epoch in xrange(n_epochs):
+            for epoch in range(n_epochs):
                 logger.info("Epoch "+str(epoch))
                 reconstruction_error_avg = 0
                 start_time = time.time()
-                for batch_n, batch in enumerate(inputs):
-                    v = batch['features']
-
-                    '''
-                    foo = v.get()[0,...]
-                    cv2.imshow('batch', numpy.transpose(v.get()[0,...]))
-                    cv2.waitKey(100)
-                    '''
-
-                    error = tensor.Tensor(v.shape)
+                for batch_n, v in enumerate(features):
 
                     # Gibbs sampling
                     ph = kernels.logistic(layer.fprop(v))
@@ -127,7 +100,7 @@ class ContrastiveDivergenceTrainer(Trainer):
                     neg_grads = layer.loglikelihood_gradient(v,h)
     
                     # Gradiant of log likelihood wrt the parameters
-                    grads = [(neg_grad-pos_grad)/inputs.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
+                    grads = [(neg_grad-pos_grad)/features.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
 
                     # Update parameters wrt the gradients
                     self.updaters[layer].update(layer.params, grads)
@@ -136,8 +109,8 @@ class ContrastiveDivergenceTrainer(Trainer):
                     reconstruction_error = ((v-pv)**2).sum()/v.size
                     reconstruction_error_avg = .1*reconstruction_error + .9*reconstruction_error_avg
 
-                #print model.updater.status()
+                # print model.updater.status()
                 logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
                 layer.show()
 
-            inputs = inputs.fprop(layer)
+            features = features.fprop(layer)

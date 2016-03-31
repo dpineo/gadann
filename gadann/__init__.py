@@ -27,31 +27,23 @@ import pycuda.curandom
 import pycuda.compiler
 import pycuda.autoinit
 
-import cublas
-import cudnn
-
-
-
-import logging.config
-
-try:
-	with open('logging.config') as config:
-		logging.config.dictConfig(eval(config.read()))
-except:
-	with open(os.path.join(os.path.dirname(__file__),'logging.config')) as config:
-		logging.config.dictConfig(eval(config.read()))
-
+import logging
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.info('Device: %s'%  (pycuda.autoinit.device.name()))
 logger.info('Memory: %.2f GiB free/%.2f GiB total' % tuple(map(lambda x:float(x)/(1024**3), pycuda.driver.mem_get_info())))
 logger.info('CUDA version %d.%d.%d' % pycuda.driver.get_version())
 logger.info('Running in %s mode' % ("OPTIMIZED", "DEBUG")[__debug__])
 
-from kernels import *
-from tensor import *
-from stream import *
-from layer import *
-from trainer import *
-from model import *
-from updater import *
-from utils import *
+from .tensor import *
+from .kernels import *
+from .tensor import *
+from .stream import *
+from .layer import *
+from .trainer import *
+from .model import *
+from .updater import *
+from .utils import *
+from .neuralnetwork import *
+
+

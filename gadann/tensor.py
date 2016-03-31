@@ -21,7 +21,6 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
 import pycuda
 import pycuda.curandom
 import pycuda.compiler
@@ -29,10 +28,10 @@ import pycuda.autoinit
 import numpy
 import operator
 import ctypes
-import math
+import functools
 
-import kernels
-import cublas
+from . import kernels
+from . import cublas
 
 mempool = pycuda.tools.DeviceMemoryPool()
 
@@ -40,47 +39,50 @@ mempool = pycuda.tools.DeviceMemoryPool()
 def saxpy(y, x, alpha=1):
     assert y.gpuarray.size == x.gpuarray.size
     cublas.cublasSaxpy(y.gpuarray.size, alpha, x.gpuarray, 1, y.gpuarray, 1)
-    assert( not numpy.isnan(y.get()).any())
+    assert not numpy.isnan(y.get()).any()
 
 # A <- alpha*x*yT + A
 def sger(y, x, AT, alpha=1):
     at_rows, at_cols = AT.shape
     lda = AT.gpuarray.shape[1]
     status = cublasSger(at_rows, at_cols, alpha, x.gpuarray, 1, y.gpuarray, 1, AT.gpuarray, lda)
-    assert(status == cublas.CUBLAS_STATUS_SUCCESS)
-    assert( not numpy.isnan(AT.get()).any())
+    assert status == cublas.CUBLAS_STATUS_SUCCESS
+    assert not numpy.isnan(AT.get()).any()
 
 # y <- alpha*A*x + beta*y
 def sgemv(y, AT, x, alpha=1, beta=0):
-    at_rows, at_cols = AT.shape
-    at_gpuarray_rows, at_gpuarray_cols = AT.gpuarray.shape
+    at_rows, *at_cols = AT.shape
+    at_cols = functools.reduce(operator.__mul__, at_cols, 1)
+
+    at_gpuarray_rows, *at_gpuarray_cols = AT.gpuarray.shape
+    at_gpuarray_cols = functools.reduce(operator.__mul__, at_gpuarray_cols, 1)
 
     y_rows, y_cols = y.shape
     x_rows, x_cols = x.shape
     lda = AT.gpuarray.shape[1]
-    trans = 'T' if not AT.transposed else 'N'
+    trans = b'T' if not AT.transposed else b'N'
     '''
     assert at_rows == y_rows
     assert at_cols == x_rows
     assert x_cols == 1
     assert y_cols == 1
     '''
-    assert( not numpy.isnan(x.get()).any())
-    assert( not numpy.isnan(AT.get()).any())
+    assert not numpy.isnan(x.get()).any()
+    assert not numpy.isnan(AT.get()).any()
 
     cublas.cublasSgemv(trans, at_gpuarray_cols, at_gpuarray_rows, alpha, AT.gpuarray, lda, x.gpuarray, 1, beta, y.gpuarray, 1)
-    assert( not numpy.isnan(y.get()).any())
+    assert not numpy.isnan(y.get()).any()
 
 # C = alpha*A*B + beta*C
 def sgemm(AT, BT, CT, alpha=1, beta=0):
     at_cols, at_rows = AT.reduced_shape()
     bt_cols, bt_rows = BT.reduced_shape()
     ct_cols, ct_rows = CT.reduced_shape()
-    lda = reduce(operator.__mul__, AT.gpuarray.shape[1:], 1)
-    ldb = reduce(operator.__mul__, BT.gpuarray.shape[1:], 1)
+    lda = functools.reduce(operator.__mul__, AT.gpuarray.shape[1:], 1)
+    ldb = functools.reduce(operator.__mul__, BT.gpuarray.shape[1:], 1)
          
-    transa = 'T' if AT.transposed else 'N'
-    transb = 'T' if BT.transposed else 'N'
+    transa = b'T' if AT.transposed else b'N'
+    transb = b'T' if BT.transposed else b'N'
 
     #print at_cols, ct_cols  # unique dim of first array
     #print at_rows, bt_cols  # common dimension
@@ -92,29 +94,30 @@ def sgemm(AT, BT, CT, alpha=1, beta=0):
     '''
 
     cublas.cublasSgemm(transb, transa, bt_rows, at_cols, bt_cols, alpha, BT.gpuarray, ldb, AT.gpuarray, lda, beta, CT.gpuarray, bt_rows)
-    assert( not numpy.isnan(CT.get()).any())
+    assert not numpy.isnan(CT.get()).any()
 
 
 def zeros(shape):
     result = Tensor(shape)
     result.gpuarray.fill(0)
-    assert( not numpy.isnan(result.get()).any())
+    assert not numpy.isnan(result.get()).any()
     return result
 
 def ones(shape):
     result = Tensor(shape)
     result.gpuarray.fill(1)
-    assert( not numpy.isnan(result.get()).any())
+    assert not numpy.isnan(result.get()).any()
     return result
 
 def bernoulli(shape, prob):
     result = Tensor(shape)
     result.gpuarray.fill(prob)
     result = kernels.sample(result)
-    assert( not numpy.isnan(result.get()).any())
+    assert not numpy.isnan(result.get()).any()
     return result
 
-#-----------------------  Tensor  --------------------------
+
+# -----------------------  Tensor  --------------------------
 class Tensor(object):
     def __init__(self, arg, axes=None, gpudata=None):
         if isinstance(arg, tuple):
@@ -162,9 +165,9 @@ class Tensor(object):
     # Gets the shape with the convolutional dims collapsed to 1D
     def reduced_shape(self):
         if not self.transposed:
-            x= (self.gpuarray.shape[0], reduce(operator.__mul__, self.gpuarray.shape[1:], 1))
+            x= (self.gpuarray.shape[0], functools.reduce(operator.__mul__, self.gpuarray.shape[1:], 1))
         else:
-            x= (reduce(operator.__mul__, self.gpuarray.shape[1:], 1), self.gpuarray.shape[0])
+            x= (functools.reduce(operator.__mul__, self.gpuarray.shape[1:], 1), self.gpuarray.shape[0])
         #print self.shape, self.gpuarray.shape, x
         return x
 
@@ -172,7 +175,7 @@ class Tensor(object):
         result = Tensor(self.shape)
         pycuda.driver.memcpy_dtod(result.gpuarray.gpudata, self.gpuarray.gpudata, self.gpuarray.nbytes)
         saxpy(result, other, alpha=-1.0)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def __add__(self, other):
@@ -180,14 +183,14 @@ class Tensor(object):
             result = Tensor(self.shape)
             result.gpuarray.fill(other)
             saxpy(result, self, alpha=1)
-            assert( not numpy.isnan(result.get()).any())
+            assert not numpy.isnan(result.get()).any()
             return result
         else:
             result = Tensor(self.shape)
             pycuda.driver.memcpy_dtod(result.gpuarray.gpudata, self.gpuarray.gpudata, self.gpuarray.nbytes)
-            assert( not numpy.isnan(result.get()).any())
+            assert not numpy.isnan(result.get()).any()
             saxpy(result, other, alpha=1)
-            assert( not numpy.isnan(result.get()).any())
+            assert not numpy.isnan(result.get()).any()
             return result
 
     def __mul__(self, other):
@@ -202,7 +205,7 @@ class Tensor(object):
     def __rmul__(self, scalar):
         return self*scalar
 
-    def __div__(self, other):
+    def __truediv__(self, other):
         if isinstance(other, (float, int)):
             result = zeros(self.shape)
             saxpy(result, self, alpha=1.0/other)
@@ -226,7 +229,7 @@ class Tensor(object):
         #print 'interpreted: %s * %s -> %s' % (self.shape, other.shape, result.shape)
         #print 'reduced:     %s * %s -> %s' % (self.reduced_shape(), other.reduced_shape(), result.reduced_shape())
         sgemm(self, other, result)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
 
@@ -239,7 +242,7 @@ class Tensor(object):
         assert self.shape[1] == 1 and other.shape[0] == 1
         result = Tensor((other.shape[1],self.shape[0])).T()
         sger(self, other, result)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def broadcast(self, shape):
@@ -247,12 +250,12 @@ class Tensor(object):
         raise NotImplementedError
         result = Tensor(shape)
         broadcast_kernel(self, result)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def sample(self):
         result = sample(self)
-        assert( not numpy.isnan(self.get()).any())
+        assert not numpy.isnan(self.get()).any()
         return result.gpuarray.get()
 
     def get(self):
@@ -276,6 +279,6 @@ class Tensor(object):
 
     def mosaic(self):
         result = kernels.mosaic(self)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 

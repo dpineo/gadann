@@ -36,11 +36,14 @@ _libdirs = []
 
 # Begin libraries
 import platform
-#_libs["cublas"] = ctypes.windll.LoadLibrary('cublas64_50_35.dll')
-_libs["cublas"] = ctypes.windll.LoadLibrary('cublas64_65.dll')
-#if platform.system()=='Microsoft': _libs["cublas"] = ctypes.windll.LoadLibrary('cublas.dll')
-#if platform.system()=='Darwin':    _libs["cublas"] = ctypes.cdll.LoadLibrary('/usr/local/cuda/lib/libcublas.dylib')
-#if platform.system()=='Linux':     _libs["cublas"] = ctypes.cdll.LoadLibrary('libcublas.so')
+if platform.system()=='Microsoft':
+    #_libs["cublas"] = ctypes.windll.LoadLibrary('cublas64_50_35.dll')
+    _libs["cublas"] = ctypes.windll.LoadLibrary('cublas64_65.dll')
+    #_libs["cublas"] = ctypes.windll.LoadLibrary('cublas.dll')
+elif platform.system()=='Darwin':
+    _libs["cublas"] = ctypes.cdll.LoadLibrary('/usr/local/cuda/lib/libcublas.dylib')
+elif platform.system()=='Linux':
+    _libs["cublas"] = ctypes.cdll.LoadLibrary('libcublas.so')
 # else:                              _libs["cublas"] = ctypes.cdll.LoadLibrary('libcublas.so')
 
 # End libraries

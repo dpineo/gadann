@@ -21,30 +21,16 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
-import pycuda
-import pycuda.curandom
-import pycuda.compiler
 import numpy
-import gzip
-import time
-import math
-import pycuda.autoinit
-import operator
-import itertools
 import copy
 
-import kernels
-import tensor
-import stream
-import layer
-import trainer
-import updater
+from .tensor import Tensor
+from .updater import SgdUpdater
 
 
-#--------------  NeuralNetworkModel  ----------------
+# --------------  NeuralNetworkModel  ----------------
 class NeuralNetworkModel(object):
-    def __init__(self, layers, input_shape=None, updater=updater.SgdUpdater()):
+    def __init__(self, layers, input_shape=None, updater=SgdUpdater()):
         self.updater = updater
         self.layers = []
 
@@ -57,17 +43,16 @@ class NeuralNetworkModel(object):
                 layer['name'] = 'Layer ' + str(layer_n)
             if 'updater' not in layer:
                 layer['updater'] = copy.copy(updater)
-            self.layers.append(layer['layer'](**layer))
+            self.layers.append(layers[layer_n]['layer'](**layer))
             input_shape = self.layers[-1].output_shape
+            pass
 
-
-        for n, (layer, prev) in enumerate(itertools.izip(self.layers+[None],[None]+self.layers)):
+        for n, (layer, prev) in enumerate(zip(self.layers+[None], [None]+self.layers)):
             if layer:
                 layer.prev = prev
                 layer.name = "Layer "+str(n)
             if prev:
                 prev.next = layer
-
 
     '''
     def add(self, layer, **kwargs):
@@ -85,7 +70,7 @@ class NeuralNetworkModel(object):
 
     def classify(self, features):
         probabilities = self.probability(features)
-        return tensor.Tensor(numpy.argmax(probabilities.get(), axis=1))
+        return Tensor(numpy.argmax(probabilities.get(), axis=1))
     '''
     def probability(self, features):
         predictions = self.predict(features)
@@ -95,14 +80,14 @@ class NeuralNetworkModel(object):
 
     def evaluate(self, features, labels):
         classifications = (self.classify(f) for f in features)
-        return numpy.fromiter(((l.get().flatten() == c.get().flatten()).mean() for (l,c) in itertools.izip(labels, classifications)),float).mean()
+        return numpy.fromiter(((l.get().flatten() == c.get().flatten()).mean() for (l,c) in zip(labels, classifications)),float).mean()
 
     def probability(self, input):
         for layer in self.layers:
             input = layer.fprop(input)
             assert( not numpy.isnan(input.get()).any())
         return input
-        #return reduce(lambda x,l: l.fprop(x), self.layers, source)
+        # return reduce(lambda x,l: l.fprop(x), self.layers, source)
 
     def __str__(self):
         return self.__class__.__name__ + '\n' + '\n'.join([str(l) for l in self.layers])

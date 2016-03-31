@@ -21,16 +21,15 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
 import pycuda
 import numpy
-import cv2
 
-import tensor
+from . import tensor
 
 
 class Stream(object):
     pass
+
 
 class TransformStream(object):
     def __init__(self, input, func):
@@ -42,22 +41,21 @@ class TransformStream(object):
 
 
 class TensorStream(object):
-    def __init__(self, features, labels, batch_size=100):
-        self.features = features
-        self.labe
+    def __init__(self, t, batch_size=100):
+        self.tensor = t
         self.batch_size = batch_size
         tensor.Tensor.ones_vector = tensor.ones((self.batch_size,1))
-        assert( not numpy.isnan(self.tensor.get()).any())
+        assert(not numpy.isnan(self.tensor.get()).any())
 
     def fprop(self, layer):
         for n, batch in enumerate(self):
-            assert( not numpy.isnan(batch.get()).any())
+            assert(not numpy.isnan(batch.get()).any())
             batch = layer.fprop(batch)
-            if not 'result' in locals():
+            if 'result' not in locals():
                 result = tensor.Tensor((self.tensor.shape[0],)+batch.shape[1:])
 
             pycuda.driver.memcpy_dtod(int(result.gpuarray.gpudata) + n*batch.gpuarray.nbytes, batch.gpuarray.gpudata, batch.gpuarray.nbytes)
-        assert( not numpy.isnan(result.get()).any())
+        assert(not numpy.isnan(result.get()).any())
         return TensorStream(result)
 
     def __iter__(self):
@@ -65,25 +63,26 @@ class TensorStream(object):
         self.batch_n = 0
         return self
 
-    def next(self):
-        assert( not numpy.isnan(self.tensor.get()).any())
+    def __next__(self):
+        assert(not numpy.isnan(self.tensor.get()).any())
         if self.batch_n >= self.tensor.gpuarray.nbytes/self.batch.gpuarray.nbytes:
             raise StopIteration
         self.batch.gpuarray.gpudata = int(self.tensor.gpuarray.gpudata) + self.batch_n*self.batch.gpuarray.nbytes
         self.batch_n += 1
-        assert( not numpy.isnan(self.batch.get()).any())
+        assert(not numpy.isnan(self.batch.get()).any())
         return self.batch
+
 
 class ImageDirectoryStream(object):
     def __init__(self, directory):
         self.directory = directory
 
     def transform(self, function):
-        tensor = function(tensor)
-        return TensorDataStream(tensor)
+        t = function(self.tensor)
+        return TensorStream(t)
 
     def __iter__(self):
-        self.batch = Tensor((self.batch_size,) + self.tensor.shape[1:], gpudata=self.tensor.gpuarray.gpudata)
+        self.batch = tensor.Tensor((self.batch_size,) + self.tensor.shape[1:], gpudata=self.tensor.gpuarray.gpudata)
         self.batch_n = 0
         return self
 
@@ -94,8 +93,11 @@ class ImageDirectoryStream(object):
         self.batch_n += 1
         return self.batch
 
+
 class ImagenetStream(object):
     def __init__(self, imagenet_filename, resize=256, batch_size=1):
+        import cv2
+
         self.imagenet_filename = imagenet_filename
         self.resize = resize
         self.batch_size = batch_size
@@ -105,13 +107,12 @@ class ImagenetStream(object):
 
     def transform(self, function):
         tensor = function(tensor)
-        return TensorDataStream(tensor)
+        return gadann.TensorDataStream(tensor)
 
     def __iter__(self):
         import tarfile
         imagenet_tarfile = tarfile.open(self.imagenet_filename)
         for category in imagenet_tarfile:
-            print category
             if category.isfile():
                 category = imagenet_tarfile.extractfile(category)
                 category_tarfile = tarfile.open(fileobj=category)
@@ -129,6 +130,7 @@ class ImagenetStream(object):
                         self.batch_shape = image.shape
                         #yield tensor.Tensor(image)
                         yield {'features':tensor.Tensor(image), 'labels': 0}
+
 
 class MessageQueueStream(object):
     def __init__(self, message_queue):
