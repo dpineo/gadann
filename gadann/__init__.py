@@ -44,6 +44,5 @@ from .trainer import *
 from .model import *
 from .updater import *
 from .utils import *
-from .neuralnetwork import *
 
 
