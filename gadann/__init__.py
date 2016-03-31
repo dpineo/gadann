@@ -21,7 +21,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys, os
+import sys
 import pycuda
 import pycuda.curandom
 import pycuda.compiler
@@ -30,7 +30,7 @@ import pycuda.autoinit
 import logging
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-logger.info('Device: %s'%  (pycuda.autoinit.device.name()))
+logger.info('Device: %s'% (pycuda.autoinit.device.name()))
 logger.info('Memory: %.2f GiB free/%.2f GiB total' % tuple(map(lambda x:float(x)/(1024**3), pycuda.driver.mem_get_info())))
 logger.info('CUDA version %d.%d.%d' % pycuda.driver.get_version())
 logger.info('Running in %s mode' % ("OPTIMIZED", "DEBUG")[__debug__])
