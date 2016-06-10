@@ -149,7 +149,7 @@ class NeuralNetworkModel(object):
                         neg_grads = layer.loglikelihood_gradient(v,h)
 
                         # Gradiant of log likelihood wrt the parameters
-                        grads = [(neg_grad-pos_grad)/features.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
+                        grads = {k: (neg_grads[k]-pos_grads[k])/features.batch_size for k in layer.params.keys()}
 
                         # Update parameters wrt the gradients
                         layer.update(grads)

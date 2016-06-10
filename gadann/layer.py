@@ -53,10 +53,10 @@ class Layer(object):
         return input
 
     def error_gradient(self, input, error):
-        return []
+        return {}
 
     def loglikelihood_gradient(self, v, h):
-        return []
+        return {}
 
     def update(self, grads):
         self.updater.update(self.params, grads)
@@ -98,7 +98,8 @@ class LinearLayer(Layer):
         w = tensor.Tensor(init*numpy.random.randn(*self.shape))
         v_bias = tensor.zeros((1, self.input_size))
         h_bias = tensor.zeros((1, self.n_features))
-        self.params = [w, v_bias, h_bias]
+        #self.params = [w, v_bias, h_bias]
+        self.params = {'w': w, 'v_bias': v_bias, 'h_bias': h_bias}
 
         return
 
@@ -127,7 +128,7 @@ class LinearLayer(Layer):
         return self.name + " - " + self.__class__.__name__ + "(shape=" + str(self.input_shape) + ")"
 
     def show(self):
-        cv2.imshow(self.name, .1*self.params[0].mosaic().get()+.5)
+        cv2.imshow(self.name, .1*self.params['w'].mosaic().get()+.5)
         cv2.waitKey(1)
 
     def fprop(self, input):
@@ -152,13 +153,13 @@ class LinearLayer(Layer):
             return self.error_gradient_conv(input, error)
 
     def fprop_dense(self, input):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         result = input.dot(w.T()) + input.ones_vector.dot(h_bias)
         assert not numpy.isnan(result.get()).any()
         return result
 
     def bprop_dense(self, input, fprop_result=None):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         result = input.dot(w) + input.ones_vector.dot(v_bias)
         assert not numpy.isnan(result.get()).any()
         return result
@@ -265,7 +266,7 @@ class LinearLayer(Layer):
 
     def bprop_conv(self, input, fprop_result=None):
         assert len(input.shape) == 4
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -307,10 +308,15 @@ class LinearLayer(Layer):
         return output
 
     def loglikelihood_gradient(self, v, h):
-        return [h.T().dot(v),  v.T().dot(v.ones_vector), h.T().dot(h.ones_vector)]
+
+        return {
+            'w': h.T().dot(v),
+            'v_bias': v.T().dot(v.ones_vector),
+            'h_bias': h.T().dot(h.ones_vector)
+        }
 
 
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -359,21 +365,19 @@ class LinearLayer(Layer):
         return [w_grad, v_bias_grad, h_bias_grad]
 
     def error_gradient_dense(self, input, error):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         w_grad = tensor.zeros(w.shape)
         v_bias_grad = tensor.zeros(v_bias.shape)
         h_bias_grad = tensor.zeros(h_bias.shape)
         tensor.sgemm(error.T(), input, w_grad, alpha=1, beta=0)
         tensor.sgemv(h_bias_grad, error.T(), input.ones_vector.T(), alpha=1, beta=0)
-        grads = [w_grad, v_bias_grad, h_bias_grad]
         assert not numpy.isnan(w_grad.get()).any()
         assert not numpy.isnan(v_bias_grad.get()).any()
         assert not numpy.isnan(h_bias_grad.get()).any()
-        return grads
-        # return {w: w_grad, v_bias:v_bias_grad, h_bias:h_bias_grad}
+        return {'w': w_grad, 'v_bias': v_bias_grad, 'h_bias': h_bias_grad}
 
     def error_gradient_conv(self, input, error):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -434,10 +438,10 @@ class DenseLayer(LinearLayer):
         return self.name + " - " + self.__class__.__name__ + "(shape=" + str(self.feature_shape) + ")"
 
     def show(self):
-        w = self.params[0]
+        w = self.params['w']
         if w.shape[1] not in (1, 3):
             return
-        cv2.imshow(self.name, self.params[0].mosaic().get()/10+.5)
+        cv2.imshow(self.name, self.params['w'].mosaic().get()/10+.5)
         cv2.moveWindow(self.name, 0, 0)
         cv2.waitKey(1)
 
