@@ -80,37 +80,36 @@ class ContrastiveDivergenceTrainer(Trainer):
         logger.info("Training (contrastive divergence)")
 
         for layer in self.model.layers:
-            if not layer.params:
-                logger.info("training " + layer.name)
-                continue
-            for epoch in range(n_epochs):
-                logger.info("Epoch "+str(epoch))
-                reconstruction_error_avg = 0
-                start_time = time.time()
-                for batch_n, v in enumerate(features):
+            logger.info("training " + layer.name)
+            if layer.params:
+                for epoch in range(n_epochs):
+                    logger.info("Epoch "+str(epoch))
+                    reconstruction_error_avg = 0
+                    start_time = time.time()
+                    for batch_n, v in enumerate(features):
 
-                    # Gibbs sampling
-                    ph = kernels.logistic(layer.fprop(v))
-                    h = kernels.sample(ph)
-                    pos_grads = layer.loglikelihood_gradient(v,h)
-                    pv = kernels.logistic(layer.bprop(h))
-                    v = kernels.sample(pv)
-                    ph = kernels.logistic(layer.fprop(v))
-                    h = kernels.sample(ph)
-                    neg_grads = layer.loglikelihood_gradient(v,h)
-    
-                    # Gradiant of log likelihood wrt the parameters
-                    grads = [(neg_grad-pos_grad)/features.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
+                        # Gibbs sampling
+                        ph = kernels.logistic(layer.fprop(v))
+                        h = kernels.sample(ph)
+                        pos_grads = layer.loglikelihood_gradient(v,h)
+                        pv = kernels.logistic(layer.bprop(h))
+                        v = kernels.sample(pv)
+                        ph = kernels.logistic(layer.fprop(v))
+                        h = kernels.sample(ph)
+                        neg_grads = layer.loglikelihood_gradient(v,h)
 
-                    # Update parameters wrt the gradients
-                    self.updaters[layer].update(layer.params, grads)
+                        # Gradiant of log likelihood wrt the parameters
+                        grads = [(neg_grad-pos_grad)/features.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
 
-                    # Running average of reconstruction error
-                    reconstruction_error = ((v-pv)**2).sum()/v.size
-                    reconstruction_error_avg = .1*reconstruction_error + .9*reconstruction_error_avg
+                        # Update parameters wrt the gradients
+                        self.updaters[layer].update(layer.params, grads)
 
-                # print model.updater.status()
-                logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
-                layer.show()
+                        # Running average of reconstruction error
+                        reconstruction_error = ((v-pv)**2).sum()/v.size
+                        reconstruction_error_avg = .1*reconstruction_error + .9*reconstruction_error_avg
 
+                    # print model.updater.status()
+                    logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
+                    layer.show()
+                #break
             features = features.fprop(layer)

@@ -467,14 +467,6 @@ class DropoutLayer(Layer):
         self.p_include = float(1-self.p_exclude)
         self.output_shape = self.input_shape
 
-    '''
-    def backprop(self, input, target):
-        bernoulli = tensor.bernoulli(input.shape, prob=self.p_include)
-        input = (input*bernoulli)/self.p_include
-        input_error = self.bprop(self.next.backprop(self.fprop(input), target))*bernoulli*self.p_include
-        return input_error
-    '''
-
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(p=" + str(self.p_exclude) + ")"
 
