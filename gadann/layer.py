@@ -58,6 +58,9 @@ class Layer(object):
     def loglikelihood_gradient(self, v, h):
         return []
 
+    def update(self, grads):
+        self.updater.update(self.params, grads)
+
     def show(self):
         pass
 

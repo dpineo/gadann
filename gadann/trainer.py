@@ -111,5 +111,5 @@ class ContrastiveDivergenceTrainer(Trainer):
                     # print model.updater.status()
                     logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
                     layer.show()
-                #break
+                break
             features = features.fprop(layer)

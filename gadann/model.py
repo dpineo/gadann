@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 # --------------  NeuralNetworkModel  ----------------
 class NeuralNetworkModel(object):
     def __init__(self, layers, input_shape=None, updater=SgdUpdater()):
-        self.updater = updater
         self.layers = []
 
         for layer_n, layer in enumerate(layers):
@@ -120,7 +119,7 @@ class NeuralNetworkModel(object):
                 for layer in reversed(self.layers):
                     input_error = layer.bprop(output_error, layer_activiations.pop())
                     grads = layer.error_gradient(layer_activiations[-1], output_error)
-                    self.updater.update(layer.params, grads)
+                    layer.update(grads)
                     output_error = input_error
 
             logger.info('  Time={:.3f}'.format(time.time()-start_time))
@@ -153,8 +152,7 @@ class NeuralNetworkModel(object):
                         grads = [(neg_grad-pos_grad)/features.batch_size for (pos_grad, neg_grad) in zip(pos_grads,neg_grads)]
 
                         # Update parameters wrt the gradients
-                        #self.updaters[layer].update(layer.params, grads)
-                        self.updater.update(layer.params, grads)
+                        layer.update(grads)
 
                         # Running average of reconstruction error
                         reconstruction_error = ((v-pv)**2).sum()/v.size
