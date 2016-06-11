@@ -107,8 +107,11 @@ class NeuralNetworkModel(object):
             start_time = time.time()
             for n, (batch_features, batch_targets) in enumerate(zip(features, labels)):
 
-                # Forward pass
+                # Save the activations during the forward pass, they will be used to
+                # compute the gradients during the backward pass
                 layer_activiations = [batch_features]
+
+                # Forward pass
                 for layer in self.layers:
                     layer_activiations.append(layer.fprop(layer_activiations[-1]))
 
@@ -141,12 +144,12 @@ class NeuralNetworkModel(object):
                         # Gibbs sampling
                         ph = kernels.logistic(layer.fprop(v))
                         h = kernels.sample(ph)
-                        pos_grads = layer.loglikelihood_gradient(v,h)
+                        pos_grads = layer.loglikelihood_gradient(v, h)
                         pv = kernels.logistic(layer.bprop(h))
                         v = kernels.sample(pv)
                         ph = kernels.logistic(layer.fprop(v))
                         h = kernels.sample(ph)
-                        neg_grads = layer.loglikelihood_gradient(v,h)
+                        neg_grads = layer.loglikelihood_gradient(v, h)
 
                         # Gradiant of log likelihood wrt the parameters
                         grads = {k: (neg_grads[k]-pos_grads[k])/features.batch_size for k in layer.params.keys()}
@@ -162,4 +165,6 @@ class NeuralNetworkModel(object):
                     logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
                     layer.show()
                 break
-            features = features.fprop(layer)
+            #features = features.fprop(layer)
+            features = features.map(layer.fprop)
+

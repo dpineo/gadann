@@ -38,7 +38,7 @@ logger.info('Running in %s mode' % ("OPTIMIZED", "DEBUG")[__debug__])
 from .tensor import *
 from .kernels import *
 from .tensor import *
-from .stream import *
+from .datasets import *
 from .layer import *
 from .trainer import *
 from .model import *

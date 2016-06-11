@@ -42,12 +42,6 @@ class SgdUpdater(Updater):
         self.weight_cost = weight_cost
         self.learning_rate = learning_rate
 
-    '''
-    def update(self, params, grads):
-        for i in range(len(params)):
-            params[i] = params[i] - self.learning_rate*grads[i] - params[i]*self.weight_cost
-    '''
-
     def update(self, params, grads):
         for k, v in grads.items():
             params[k] = params[k] - self.learning_rate*v - params[k]*self.weight_cost

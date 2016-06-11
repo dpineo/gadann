@@ -119,7 +119,7 @@ def bernoulli(shape, prob):
 
 # -----------------------  Tensor  --------------------------
 class Tensor(object):
-    def __init__(self, arg, axes=None, gpudata=None):
+    def __init__(self, arg, axes=None, gpudata=None, batch_size=None):
         if isinstance(arg, tuple):
             if gpudata:
                 self.gpuarray = pycuda.gpuarray.GPUArray(arg, dtype='float32', gpudata=gpudata)
@@ -135,6 +135,12 @@ class Tensor(object):
         self.transposed = False
         self.axes = axes
         self.size = self.gpuarray.size
+        self.batch_size = batch_size
+        if batch_size:
+            self.batch = Tensor((self.batch_size,) + self.shape[1:], gpudata=self.gpuarray.gpudata)
+            self.ones_vector = ones((self.batch_size, 1))
+        elif numpy.prod(self.shape[1:]) != 1:
+            self.ones_vector = ones((self.shape[0], 1))
 
     def dim(self, name):
         return self.shape[self.axis(name)]
@@ -263,13 +269,6 @@ class Tensor(object):
             return self.gpuarray.get()
         else:
             return self.gpuarray.get().transpose()
-    
-    def as_onehot(self):
-        data = self.get()
-        onehot = numpy.zeros((data.shape[0],max(data)+1), dtype=numpy.float32)
-        for i in range(data.shape[0]):
-            onehot[i,data[i]] = 1
-        return Tensor(onehot)
 
     def T(self):
         result = Tensor(self.shape, gpudata=self.gpuarray.gpudata)
@@ -282,3 +281,30 @@ class Tensor(object):
         assert not numpy.isnan(result.get()).any()
         return result
 
+    def __iter__(self):
+        # self.batch = tensor.Tensor((self.batch_size,) + self.tensor.shape[1:], gpudata=self.tensor.gpuarray.gpudata)
+        assert self.batch_size
+        self.batch_n = 0
+        return self
+
+    def __next__(self):
+        assert self.batch_size
+        assert (not numpy.isnan(self.tensor.get()).any())
+        if self.batch_n >= self.gpuarray.nbytes / self.batch.gpuarray.nbytes:
+            raise StopIteration
+        self.batch.gpuarray.gpudata = int(self.gpuarray.gpudata) + self.batch_n * self.batch.gpuarray.nbytes
+        self.batch_n += 1
+        assert (not numpy.isnan(self.batch.get()).any())
+        return self.batch
+
+    def apply(self, f):
+        for n, batch in enumerate(self):
+            assert (not numpy.isnan(batch.get()).any())
+            batch = f(batch)
+            if 'result' not in locals():
+                result = Tensor((self.shape[0],) + batch.shape[1:], batch_size=self.batch_size)
+
+            pycuda.driver.memcpy_dtod(int(result.gpuarray.gpudata) + n * batch.gpuarray.nbytes, batch.gpuarray.gpudata,
+                                      batch.gpuarray.nbytes)
+        assert (not numpy.isnan(result.get()).any())
+        return result
