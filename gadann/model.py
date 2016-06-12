@@ -49,14 +49,6 @@ class NeuralNetworkModel(object):
                 layer['updater'] = copy.copy(updater)
             self.layers.append(layers[layer_n]['layer'](**layer))
             input_shape = self.layers[-1].output_shape
-            pass
-
-        for n, (layer, prev) in enumerate(zip(self.layers+[None], [None]+self.layers)):
-            if layer:
-                layer.prev = prev
-                layer.name = "Layer "+str(n)
-            if prev:
-                prev.next = layer
 
     '''
     def add(self, layer, **kwargs):
@@ -84,14 +76,15 @@ class NeuralNetworkModel(object):
 
     def evaluate(self, features, labels):
         classifications = (self.classify(f) for f in features)
-        return numpy.fromiter(((l.get().flatten() == c.get().flatten()).mean() for (l,c) in zip(labels, classifications)),float).mean()
+        return numpy.fromiter(((l.get().flatten() == c.get().flatten()).mean()
+                               for (l, c) in zip(labels, classifications)), float).mean()
 
     def probability(self, input):
         for layer in self.layers:
             input = layer.fprop(input)
-            assert( not numpy.isnan(input.get()).any())
+            assert(not numpy.isnan(input.get()).any())
         return input
-        # return reduce(lambda x,l: l.fprop(x), self.layers, source)
+        # return reduce(lambda x,l: l.fprop(x), self.layers, input)
 
     def __str__(self):
         return self.__class__.__name__ + '\n' + '\n'.join([str(l) for l in self.layers])
@@ -115,13 +108,13 @@ class NeuralNetworkModel(object):
                 for layer in self.layers:
                     layer_activiations.append(layer.fprop(layer_activiations[-1]))
 
-                # Squared error cost: E=1/2*(t-y)^2 => dE/dy=t-y
+                # Error delta
                 output_error = layer_activiations[-1] - batch_targets
 
                 # Backward pass
                 for layer in reversed(self.layers):
                     input_error = layer.bprop(output_error, layer_activiations.pop())
-                    grads = layer.error_gradient(layer_activiations[-1], output_error)
+                    grads = layer.gradient(layer_activiations[-1], output_error)
                     layer.update(grads)
                     output_error = input_error
 
@@ -132,10 +125,13 @@ class NeuralNetworkModel(object):
     def train_contrastive_divergence(self, features, n_epochs):
         logger.info("Training (contrastive divergence)")
 
-        for layer in self.layers[:2]:  # don't do the last linear & softmax layers
+        for layer in self.layers[:-2]:  # don't train the last linear & softmax layers
             logger.info("training " + layer.name)
+
+            # skip the layer if it has no parameters to train
             if not layer.params:
                 continue
+
             for epoch in range(n_epochs):
                 logger.info("Epoch "+str(epoch))
                 reconstruction_error_avg = 0
@@ -143,27 +139,32 @@ class NeuralNetworkModel(object):
                 for batch_n, v in enumerate(features):
 
                     # Gibbs sampling
-                    ph = kernels.logistic(layer.fprop(v))
+                    p_h_given_v = kernels.logistic(layer.fprop(v))
+                    h_sample = kernels.sample(p_h_given_v)
+                    pos_grads = layer.gradient(v, h_sample)
+                    p_v_given_h = kernels.logistic(layer.bprop(h_sample))
+                    v_sample = kernels.sample(p_v_given_h)
+
+                    ph = kernels.logistic(layer.fprop(v_sample))
                     h = kernels.sample(ph)
-                    pos_grads = layer.loglikelihood_gradient(v, h)
-                    pv = kernels.logistic(layer.bprop(h))
-                    v = kernels.sample(pv)
-                    ph = kernels.logistic(layer.fprop(v))
-                    h = kernels.sample(ph)
-                    neg_grads = layer.loglikelihood_gradient(v, h)
+                    neg_grads = layer.gradient(v, h)
 
                     # Gradiant of log likelihood wrt the parameters
-                    grads = {k: (neg_grads[k] - pos_grads[k]) / features.batch_size for k in layer.params.keys()}
+                    grads = {k: (neg_grads[k] - pos_grads[k]) / features.batch_size for k in pos_grads.keys()}
 
                     # Update parameters wrt the gradients
                     layer.update(grads)
 
                     # Running average of reconstruction error
-                    reconstruction_error = ((v-pv)**2).sum()/v.size
+                    reconstruction_error = ((v-p_v_given_h)**2).sum()/v.size
                     reconstruction_error_avg = .1*reconstruction_error + .9*reconstruction_error_avg
 
                 # print model.updater.status()
                 logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
                 layer.show()
+
+            # propgate input data through the layer
             features = features.apply(layer.fprop)
+            #features = layer.fprop(features)
+
 

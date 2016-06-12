@@ -309,7 +309,7 @@ class Tensor(object):
             if 'result' not in locals():
                 result = Tensor((self.shape[0],) + batch.shape[1:], batch_size=self.batch_size)
 
-            pycuda.driver.memcpy_dtod(int(result.gpuarray.gpudata) + n * batch.gpuarray.nbytes, batch.gpuarray.gpudata,
-                                      batch.gpuarray.nbytes)
+            pycuda.driver.memcpy_dtod(int(result.gpuarray.gpudata) + n * batch.gpuarray.nbytes,
+                                      batch.gpuarray.gpudata, batch.gpuarray.nbytes)
         assert (not numpy.isnan(result.get()).any())
         return result

@@ -52,10 +52,7 @@ class Layer(object):
     def bprop(self, input, fprop_result=None):
         return input
 
-    def error_gradient(self, input, error):
-        return {}
-
-    def loglikelihood_gradient(self, v, h):
+    def gradient(self, input, output):
         return {}
 
     def update(self, grads):
@@ -145,12 +142,12 @@ class LinearLayer(Layer):
         else:
             return self.bprop_conv(input, fprop_result)
 
-    def error_gradient(self, input, error):
+    def gradient(self, input, output):
         #if self.shape[1:] == input.size:
         if True:
-            return self.error_gradient_dense(input, error)
+            return self.gradient_dense(input, output)
         else:
-            return self.error_gradient_conv(input, error)
+            return self.gradient_conv(input, output)
 
     def fprop_dense(self, input):
         w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
@@ -307,11 +304,10 @@ class LinearLayer(Layer):
         assert not numpy.isnan(output.get()).any()
         return output
 
-    def loglikelihood_gradient(self, v, h):
+    def gradient_dense(self, v, h):
 
         return {
             'w': h.T().dot(v),
-            'v_bias': v.T().dot(v.ones_vector),
             'h_bias': h.T().dot(h.ones_vector)
         }
 
@@ -364,19 +360,21 @@ class LinearLayer(Layer):
         assert not numpy.isnan(h_bias.get()).any()
         return [w_grad, v_bias_grad, h_bias_grad]
 
-    def error_gradient_dense(self, input, error):
+    '''
+    def gradient_dense(self, input, output):
         w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         w_grad = tensor.zeros(w.shape)
         v_bias_grad = tensor.zeros(v_bias.shape)
         h_bias_grad = tensor.zeros(h_bias.shape)
-        tensor.sgemm(error.T(), input, w_grad, alpha=1, beta=0)
-        tensor.sgemv(h_bias_grad, error.T(), input.ones_vector.T(), alpha=1, beta=0)
+        tensor.sgemm(output.T(), input, w_grad, alpha=1, beta=0)
+        tensor.sgemv(h_bias_grad, output.T(), input.ones_vector.T(), alpha=1, beta=0)
         assert not numpy.isnan(w_grad.get()).any()
         assert not numpy.isnan(v_bias_grad.get()).any()
         assert not numpy.isnan(h_bias_grad.get()).any()
         return {'w': w_grad, 'v_bias': v_bias_grad, 'h_bias': h_bias_grad}
+    '''
 
-    def error_gradient_conv(self, input, error):
+    def gradient_conv(self, input, output):
         w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
@@ -390,7 +388,7 @@ class LinearLayer(Layer):
             self.output_descriptor,
             cudnn.cudnnTensorFormat['CUDNN_TENSOR_NCHW'],
             cudnn.cudnnDataType['CUDNN_DATA_FLOAT'],
-            *error.shape
+            *output.shape
         )
 
         w_grad = tensor.zeros(w.shape)
@@ -404,7 +402,7 @@ class LinearLayer(Layer):
             self.input_descriptor,
             input.data(),
             self.output_descriptor,
-            error.data(),
+            output.data(),
             self.convolution_descriptor,
             1,
             self.filter_descriptor,
@@ -415,7 +413,7 @@ class LinearLayer(Layer):
             cudnn_context,
             1,
             self.output_descriptor,
-            error.data(),
+            output.data(),
             1,
             self.bias_descriptor,
             h_bias_grad.data()
@@ -430,9 +428,6 @@ class LinearLayer(Layer):
 class DenseLayer(LinearLayer):
     def __init__(self, **kwargs):
         super(DenseLayer, self).__init__(**kwargs)
-
-    def loglikelihood_gradient(self, v, h):
-        return [h.T().dot(v),  v.T().dot(v.ones_vector), h.T().dot(h.ones_vector)]
 
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(shape=" + str(self.feature_shape) + ")"
@@ -584,7 +579,7 @@ class GadannConvLayer(LinearLayer):
         assert not numpy.isnan(result.get()).any()
         return result
 
-    def loglikelihood_gradient(self, v, h):
+    def gradient(self, v, h):
         w, v_bias, h_bias = self.params
         w_update = tensor.zeros(w.shape)
         v_bias_update = tensor.zeros(v_bias.shape)
