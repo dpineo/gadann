@@ -116,6 +116,12 @@ def bernoulli(shape, prob):
     assert not numpy.isnan(result.get()).any()
     return result
 
+def onehot(x):
+    data = x.get()
+    onehot = numpy.zeros((data.shape[0], max(data) + 1), dtype=numpy.float32)
+    for i in range(data.shape[0]):
+        onehot[i, data[i]] = 1
+    return Tensor(onehot)
 
 # -----------------------  Tensor  --------------------------
 class Tensor(object):
@@ -237,7 +243,6 @@ class Tensor(object):
         sgemm(self, other, result)
         assert not numpy.isnan(result.get()).any()
         return result
-
 
     def __pow__(self, scalar):
         return Tensor((self.gpuarray**scalar).get())
