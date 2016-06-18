@@ -25,6 +25,7 @@ import numpy
 import copy
 import logging
 import time
+import cv2
 
 from .tensor import Tensor
 from .updater import SgdUpdater
@@ -89,9 +90,17 @@ class NeuralNetworkModel(object):
     def __str__(self):
         return self.__class__.__name__ + '\n' + '\n'.join([str(l) for l in self.layers])
 
-    def traverse(self, f):
-        for layer in self.layers:
-            layer.f()
+    def show(self):
+        for layer_n, layer in enumerate(self.layers):
+            if not layer.params:
+                continue
+
+            weights = layer.params['w']
+            for deconv_layer in reversed(self.layers[:layer_n]):
+                weights = deconv_layer.bprop(weights)
+
+            cv2.imshow(layer.name, weights.mosaic().get() + .5)
+            cv2.waitKey(1)
 
     def train_backprop(self, features, labels, n_epochs):
         logger.info("Training (batch gradient descent)")
@@ -102,25 +111,24 @@ class NeuralNetworkModel(object):
 
                 # Save the activations during the forward pass, they will be used to
                 # compute the gradients during the backward pass
-                layer_activiations = [batch_features]
+                layer_activations = [batch_features]
 
                 # Forward pass
                 for layer in self.layers:
-                    layer_activiations.append(layer.fprop(layer_activiations[-1]))
+                    layer_activations.append(layer.fprop(layer_activations[-1]))
 
                 # Error delta
-                output_error = layer_activiations[-1] - batch_targets
+                output_error = layer_activations[-1] - batch_targets
 
                 # Backward pass
                 for layer in reversed(self.layers):
-                    input_error = layer.bprop(output_error, layer_activiations.pop())
-                    grads = layer.gradient(layer_activiations[-1], output_error)
+                    input_error = layer.bprop(output_error, layer_activations.pop())
+                    grads = layer.gradient(layer_activations[-1], output_error)
                     layer.update(grads)
                     output_error = input_error
 
-            logger.info('  Time={:.3f}'.format(time.time()-start_time))
-            for layer in self.layers:
-                layer.show()
+            logger.info(' Epoch {}  Time={:.3f}'.format(epoch, time.time()-start_time))
+            self.show()
 
     def train_contrastive_divergence(self, features, n_epochs):
         logger.info("Training (contrastive divergence)")
@@ -133,7 +141,6 @@ class NeuralNetworkModel(object):
                 continue
 
             for epoch in range(n_epochs):
-                logger.info("Epoch "+str(epoch))
                 reconstruction_error_avg = 0
                 start_time = time.time()
                 for batch_n, v in enumerate(features):
@@ -159,12 +166,13 @@ class NeuralNetworkModel(object):
                     reconstruction_error = ((v-p_v_given_h)**2).sum()/v.size
                     reconstruction_error_avg = .1*reconstruction_error + .9*reconstruction_error_avg
 
+                    self.show()
+
                 # print model.updater.status()
-                logger.info('  Time={:.3f}  Error={:.6f}'.format(time.time()-start_time, reconstruction_error))
-                layer.show()
+                logger.info(' Epoch {}  Time={:.3f}  Error={:.6f}'.format(epoch, time.time()-start_time, reconstruction_error))
+                self.show()
 
             # propgate input data through the layer
-            features = features.apply(layer.fprop)
-            #features = layer.fprop(features)
+            features = features.apply_batchwise(layer.fprop)
 
 

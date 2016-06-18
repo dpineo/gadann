@@ -21,10 +21,70 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import pycuda
 import numpy
+import gzip
+import pickle
+import os
 
 from . import tensor
+
+def load_mnist(path):
+    # with gzip.open(os.path.join(gadann.module_dir, '..', 'data', 'mnist.pkl.gz'), 'rb') as file:
+    with gzip.open(os.path.join(path, 'mnist.pkl.gz'), 'rb') as file:
+        ((train_features, train_labels),
+         (valid_features, valid_labels),
+         (test_features, test_labels)) = pickle.load(file, encoding='latin1')
+
+    self.train_features = self.train_features.reshape((50000, 1, 28, 28))
+    self.test_features = self.test_features.reshape((10000, 1, 28, 28))
+
+    self.train_features = gadann.Tensor(self.train_features, batch_size=100)
+    self.train_labels = gadann.Tensor(self.train_labels, batch_size=100)
+    self.train_labels_onehot = self.train_labels.apply_batchwise(tensor.onehot)
+
+    self.test_features = gadann.Tensor(self.test_features, batch_size=100)
+    self.test_labels = gadann.Tensor(self.test_labels, batch_size=100)
+    self.test_labels_onehot = self.test_labels.apply_batchwise(tensor.onehot)
+
+
+def load_norb(num_training_samples=1000, binarize_y=False):
+    def read_bytes(file_handle, num_type, count):
+        num_bytes = count * numpy.dtype(num_type).itemsize
+        string = file_handle.read(num_bytes)
+        return numpy.fromstring(string, dtype=num_type)
+
+    def load(filename):
+        file_handle = open(filename, encoding='latin1')
+        type_key = read_bytes(file_handle, 'int32', 1)[0]
+        num_dims = read_bytes(file_handle, 'int32', 1)[0]
+        shape = numpy.fromfile(file_handle, dtype='int32', count=max(num_dims, 3))[:num_dims]
+        num_elems = numpy.prod(shape)
+
+        if type_key == 507333716:
+            return numpy.fromfile(file_handle, dtype='int32', count=num_elems).reshape(shape)
+        elif type_key == 507333717:
+            return numpy.fromfile(file_handle, dtype='uint8', count=num_elems).reshape(shape).astype('float32')/256.0
+
+    def binarize_labels(y, n_classes=10):
+        new_y = numpy.zeros((n_classes, y.shape[0]))
+        for i in range(y.shape[0]):
+            new_y[y[i], i] = 1
+        return new_y
+
+    print(os.getcwd())
+    features = load('data/smallnorb-5x46789x9x18x6x2x96x96-training-dat.mat')
+    labels = load('data/smallnorb-5x46789x9x18x6x2x96x96-training-cat.mat')
+    train_x = features[num_training_samples:]
+    train_y = labels[num_training_samples:]
+    test_x = features[:num_training_samples]
+    test_y = labels[:num_training_samples]
+
+    #reshape((50000, 1, 28, 28)
+
+    if binarize_y:
+        train_y = binarize_labels(train_y, n_classes=5)
+        test_y = binarize_labels(train_y, n_classes=5)
+    return ((train_x, train_y), (test_x, test_y))
 
 
 class load_imagenet(object):

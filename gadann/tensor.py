@@ -287,14 +287,13 @@ class Tensor(object):
         return result
 
     def __iter__(self):
-        # self.batch = tensor.Tensor((self.batch_size,) + self.tensor.shape[1:], gpudata=self.tensor.gpuarray.gpudata)
         assert self.batch_size
         self.batch_n = 0
         return self
 
     def __next__(self):
         assert self.batch_size
-        assert (not numpy.isnan(self.tensor.get()).any())
+        assert (not numpy.isnan(self.get()).any())
         if self.batch_n >= self.gpuarray.nbytes / self.batch.gpuarray.nbytes:
             raise StopIteration
         self.batch.gpuarray.gpudata = int(self.gpuarray.gpudata) + self.batch_n * self.batch.gpuarray.nbytes
@@ -302,7 +301,7 @@ class Tensor(object):
         assert (not numpy.isnan(self.batch.get()).any())
         return self.batch
 
-    def apply(self, f):
+    def apply_batchwise(self, f):
         for n, batch in enumerate(self):
             assert (not numpy.isnan(batch.get()).any())
             batch = f(batch)

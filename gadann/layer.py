@@ -95,7 +95,6 @@ class LinearLayer(Layer):
         w = tensor.Tensor(init*numpy.random.randn(*self.shape))
         v_bias = tensor.zeros((1, self.input_size))
         h_bias = tensor.zeros((1, self.n_features))
-        #self.params = [w, v_bias, h_bias]
         self.params = {'w': w, 'v_bias': v_bias, 'h_bias': h_bias}
 
         return
@@ -453,8 +452,12 @@ class ActivationLayer(Layer):
         assert not numpy.isnan(result.get()).any()
         return result
 
-    def bprop(self, input, fprop_result):
-        result = self.d_activation(input, fprop_result)
+    def bprop(self, input, fprop_result=None):
+        if fprop_result:
+            result = self.d_activation(input, fprop_result)
+        else:
+            f = self.activation(input)
+            result = (tensor.Tensor(numpy.ones_like(f.get()))-f) * f
         assert not numpy.isnan(result.get()).any()
         return result
 

@@ -52,11 +52,11 @@ class TestMnist(unittest.TestCase):
 
         self.train_features = gadann.Tensor(self.train_features, batch_size=100)
         self.train_labels = gadann.Tensor(self.train_labels, batch_size=100)
-        self.train_labels_onehot = self.train_labels.apply(gadann.tensor.onehot)
+        self.train_labels_onehot = self.train_labels.apply_batchwise(gadann.tensor.onehot)
 
         self.test_features = gadann.Tensor(self.test_features, batch_size=100)
         self.test_labels = gadann.Tensor(self.test_labels, batch_size=100)
-        self.test_labels_onehot = self.test_labels.apply(gadann.tensor.onehot)
+        self.test_labels_onehot = self.test_labels.apply_batchwise(gadann.tensor.onehot)
 
         numpy.random.seed(1234)
         self.start_time = time.time()
@@ -96,14 +96,15 @@ class TestMnist(unittest.TestCase):
         model = gadann.NeuralNetworkModel(
             input_shape=(1, 28, 28),
             layers=[
-                {'layer': gadann.LinearLayer,     'n_features': 300},
+                {'layer': gadann.LinearLayer, 'n_features': 500},
                 {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
-                {'layer': gadann.LinearLayer,     'n_features': 300},
+                {'layer': gadann.LinearLayer, 'n_features': 300},
                 {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
-                {'layer': gadann.LinearLayer,     'n_features': 10},
+                {'layer': gadann.LinearLayer, 'n_features': 10},
                 {'layer': gadann.ActivationLayer, 'activation': gadann.softmax}
             ],
-            updater=gadann.SgdUpdater(learning_rate=0.01, weight_cost=0)
+            #updater=gadann.SgdUpdater(learning_rate=0.01, weight_cost=0.0001)
+            updater=gadann.MomentumUpdater(learning_rate=0.01, inertia=0.9, weight_cost=0.0)
         )
 
         model.train_contrastive_divergence(self.train_features, n_epochs=10)
@@ -111,8 +112,8 @@ class TestMnist(unittest.TestCase):
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
-        logger.info("Training set accuracy = " + str(train_accuracy*100) + "%")
-        logger.info("Test set accuracy = " + str(test_accuracy*100) + "%")
+        logger.info("Training set accuracy = " + str(train_accuracy * 100) + "%")
+        logger.info("Test set accuracy = " + str(test_accuracy * 100) + "%")
 
     def test_mnist_pretrained(self):
         """ First pretrain a single LinearLayer, Then use in
@@ -329,4 +330,5 @@ TestMnist("test_mnist_multilayer").debug()
 
 #from gadann.utils import profile
 #profile('TestMnist("test_mnist_multilayer").debug()', locals())
+
 cv2.waitKey(-1)
