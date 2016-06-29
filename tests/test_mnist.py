@@ -98,7 +98,9 @@ class TestMnist(unittest.TestCase):
             updater = gadann.SgdUpdater(learning_rate=0.1, weight_cost=0.00)
         )
 
-        gadann.BatchGradientDescentTrainer(model, model.updater).train(self.train_features, self.train_labels_onehot, n_epochs=1)
+        # TODO: reverse to model.train(sgd_trainer)
+        gadann.BatchGradientDescentTrainer(model, model.updater).train(
+            self.train_features, self.train_labels_onehot, n_epochs=1)
 
         train_accuracy = model.evaluate(self.test_features, self.test_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
@@ -381,7 +383,7 @@ class TestMnist(unittest.TestCase):
 
 #unittest.main(exit=False, verbosity=2)
 
-#TestMnist("test_mnist_singlelayer").debug()
+TestMnist("test_mnist_singlelayer").debug()
 #TestMnist("test_mnist_multilayer").debug()
 #TestMnist("test_mnist_pretrained").debug()
 
@@ -389,7 +391,7 @@ class TestMnist(unittest.TestCase):
 #TestMnist("test_mnist_multilayer_cudnn").debug()
 #TestMnist("test_mnist_pretrained_cudnn").debug()
 
-TestMnist("test_mnist_localization").debug()
+#TestMnist("test_mnist_localization").debug()
 
 #from gadann.utils import profile
 #profile('TestMnist("test_mnist_multilayer").debug()', locals())

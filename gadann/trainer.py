@@ -56,14 +56,12 @@ class BatchGradientDescentTrainer(Trainer):
         self.model = model
         self.updaters = collections.defaultdict(lambda: copy.deepcopy(updater))
 
-    def train(self, dataset, n_epochs):
+    def train(self, inputs, targets, n_epochs):
         logger.info("Training (batch gradient descent)")
         for epoch in xrange(n_epochs):
             logger.info("Epoch " + str(epoch),)
             start_time = time.time()
-            for n, batch in enumerate(dataset):
-                input_batch = batch['features']
-                target_batch = batch['labels']
+            for n, (input_batch, target_batch) in enumerate(itertools.izip(inputs, targets)):
                 assert( not numpy.isnan(input_batch.get()).any())
                 assert( not numpy.isnan(target_batch.get()).any())
                 #self.backprop(self.model.layers[0], input_batch, target_batch)

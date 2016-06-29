@@ -629,4 +629,5 @@ class NumpyConvLayer(LinearLayer):
         return Tensor(result)
 
 
-cudnn_context = cudnn.cudnnCreate()
+# TODO: disabled for Fermi
+#cudnn_context = cudnn.cudnnCreate()

@@ -221,7 +221,7 @@ def image_2_design(image):
 
 
 module_dir = os.path.dirname(os.path.abspath(__file__))
-cuda_src = open(os.path.join(module_dir, "kernels.cu"), 'r').read()
+cuda_src = open(os.path.join(module_dir,"kernels.cu"), 'r').read()
 sm = pycuda.compiler.SourceModule(cuda_src)
 
 import re
