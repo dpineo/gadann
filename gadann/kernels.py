@@ -30,7 +30,7 @@ import operator
 import math
 import os
 
-import tensor
+from . import tensor
 
 def seed_getter_func(count):
     return pycuda.gpuarray.arange(0, count, 1, dtype=numpy.int32)
@@ -198,7 +198,7 @@ def diff(output, target, result):
 
 def mosaic(input, border_size=1):
     block_shape = input.shape[-2:] + (1,)
-    
+
     if input.shape[1] in (1,3):
         grid_size = input.shape[0]
         grid_shape = (int(math.ceil(math.sqrt(grid_size))), int(math.sqrt(grid_size)), input.shape[1])
@@ -207,7 +207,7 @@ def mosaic(input, border_size=1):
         grid_size = input.shape[0]*input.shape[1]
         grid_shape = (int(math.ceil(math.sqrt(grid_size))), int(math.sqrt(grid_size)), 1)
         output = tensor.Tensor(((block_shape[1]+border_size)*grid_shape[1], (block_shape[0]+border_size)*grid_shape[0], 1))
-    
+
     output.gpuarray.fill(.2)
     mosaic_kernel(input.gpuarray, output.gpuarray, numpy.uint32(grid_size), numpy.uint32(border_size), block=block_shape, grid=grid_shape)
     return output

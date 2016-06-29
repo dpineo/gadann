@@ -21,29 +21,12 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
-import pycuda
-import pycuda.curandom
-import pycuda.compiler
-import pycuda.autoinit
-import numpy
-import gzip
-import cPickle
-import time
-import math
-import cv2
-import operator
-import itertools
 import logging
-import copy
-import collections
 
-import kernels
-import tensor
-import stream
-import layer
+from . import kernels
 
 logger = logging.getLogger(__name__)
+
 
 class Updater(object):
     def __init__(self):
@@ -53,20 +36,16 @@ class Updater(object):
         for key in params.iterkeys():
             params[key] = params[key] + grads[key]*learning_rate
 
+
 class SgdUpdater(Updater):
     def __init__(self, learning_rate=0.1, weight_cost=0.01):
         self.weight_cost = weight_cost
         self.learning_rate = learning_rate
 
-
     def update(self, params, grads):
-        for i in range(len(params)):
-            params[i] = params[i] - self.learning_rate*grads[i] - params[i]*self.weight_cost
-    '''
-    def update(self, grads):
-        for param, grad in grads.iteritems():
-            grads[param] = param - self.learning_rate*grad - param*self.weight_cost
-    '''
+        for k, v in grads.items():
+            params[k] = params[k] - self.learning_rate*v - params[k]*self.weight_cost
+
     def status(self):
         return ''
 
@@ -89,6 +68,7 @@ class MomentumUpdater(Updater):
 
     def status(self):
         return 'inertia:' + str(self.inertia)
+
 
 class RmspropUpdater(Updater):
     def __init__(self, learning_rate=0.1, inertia=0.0, weight_cost=0.00):

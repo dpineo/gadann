@@ -23,11 +23,12 @@
 
 import cProfile
 import pstats
-import gprof2dot
+#import gprof2dot
 import subprocess
-
+'''
 def profile(command, locals):
 	cProfile.runctx(command, globals(), locals, 'profile.pstats')
 	gprof2dot.Main().main(["-f", "pstats", "-o", "profile.dot", "profile.pstats"])
 	subprocess.call(['dot', '-Tpdf', '-oprofile.pdf', 'profile.dot'])
-	print command + " run time: " +  str(pstats.Stats('profile.pstats').total_tt) + " seconds"
+	print(command + " run time: " +  str(pstats.Stats('profile.pstats').total_tt) + " seconds")
+'''

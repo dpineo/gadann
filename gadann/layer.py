@@ -21,35 +21,30 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys
-import pycuda
 import numpy
-import math
 import operator
-import itertools
 import scipy
-import cudnn
-import ctypes
 import logging
 import cv2
+import functools
+import pickle
 
-import kernels
-import tensor
+from . import cudnn
+from . import kernels
+from . import tensor
 
 logger = logging.getLogger(__name__)
 
-#-----------------------  Layer  --------------------------
+
+# -----------------------  Layer  --------------------------
 class Layer(object):
     def __init__(self, **kwargs):
         self.params = []
         self.name = kwargs['name']
         self.input_shape = kwargs['input_shape'] + (3-len(kwargs['input_shape']))*(1,)
-        self.input_size = reduce(operator.__mul__, self.input_shape, 1)
+        self.input_size = functools.reduce(operator.__mul__, self.input_shape, 1)
         self.updater = kwargs['updater']
         pass
-
-    def backprop(self, input, target):
-        return self.bprop(self.next.backprop(self.fprop(input), target))
 
     def fprop(self, input):
         return input
@@ -57,25 +52,11 @@ class Layer(object):
     def bprop(self, input, fprop_result=None):
         return input
 
-    def error_gradient(self, input, error):
-        return []
+    def gradient(self, input, output):
+        return {}
 
-    def loglikelihood_gradient(self, v, h):
-        return []
-
-    
-    def backprop(self, input, target):
-        output = self.fprop(input)
-
-        if self.next:
-            output_error = self.next.backprop(output, target)
-        else:
-            output_error = output - target
-
-        input_error = self.bprop(output_error, output)
-        grads = self.error_gradient(input, output_error)
+    def update(self, grads):
         self.updater.update(self.params, grads)
-        return input_error
 
     def show(self):
         pass
@@ -83,10 +64,11 @@ class Layer(object):
     def save(self):
         # Save weights to file
         fo = gzip.GzipFile(self.name + '_weights.gz', 'wb')
-        cPickle.dump([param.get() for param in self.params], fo)
+        pickle.dump([param.get() for param in self.params], fo)
         fo.close()
 
-#-----------------------  LinearLayer  --------------------------
+
+# -----------------------  LinearLayer  --------------------------
 class LinearLayer(Layer):
     def __init__(self, **kwargs):
         super(LinearLayer, self).__init__(**kwargs)
@@ -94,12 +76,12 @@ class LinearLayer(Layer):
         if 'stride' in kwargs:
             self.stride = kwargs['stride']
         else:
-            self.stride = (1,1)
+            self.stride = (1, 1)
 
         if 'padding' in kwargs:
             self.padding = kwargs['padding']
         else:
-            self.padding = (0,0)
+            self.padding = (0, 0)
 
         self.n_features = kwargs['n_features']
         try:
@@ -107,13 +89,15 @@ class LinearLayer(Layer):
         except:
             self.shape = (self.n_features,)+kwargs['input_shape']
 
-        self.output_shape = (self.shape[0],)+tuple([(x-y)/s+1+2*p for x,y,s,p in zip(self.input_shape[-2:],self.shape[-2:],self.stride,self.padding)])
+        self.output_shape = (self.shape[0],)+tuple([(x-y)//s+1+2*p for x, y, s, p in zip(self.input_shape[-2:], self.shape[-2:], self.stride, self.padding)])
 
         init = kwargs.get('init', 0.01)
         w = tensor.Tensor(init*numpy.random.randn(*self.shape))
-        v_bias = tensor.zeros((1,self.input_size))
-        h_bias = tensor.zeros((1,self.n_features))
-        self.params = [w, v_bias, h_bias]
+        v_bias = tensor.zeros((1, self.input_size))
+        h_bias = tensor.zeros((1, self.n_features))
+        self.params = {'w': w, 'v_bias': v_bias, 'h_bias': h_bias}
+
+        return
 
         self.filter_descriptor = cudnn.cudnnCreateFilterDescriptor()
         self.bias_descriptor = cudnn.cudnnCreateTensorDescriptor()
@@ -140,38 +124,40 @@ class LinearLayer(Layer):
         return self.name + " - " + self.__class__.__name__ + "(shape=" + str(self.input_shape) + ")"
 
     def show(self):
-        cv2.imshow(self.name, .1*self.params[0].mosaic().get()+.5)
+        cv2.imshow(self.name, .1*self.params['w'].mosaic().get()+.5)
         cv2.waitKey(1)
 
     def fprop(self, input):
-        if self.shape[1:] == input.size:
+        #if self.shape[1:] == input.shape[1:]:
+        if True:
             return self.fprop_dense(input)
         else:
             return self.fprop_conv(input)
 
     def bprop(self, input, fprop_result=None):
-        if self.shape[1:] == input.size:
+        #if self.shape[0] == input.shape[1]:
+        if True:
             return self.bprop_dense(input, fprop_result)
         else:
             return self.bprop_conv(input, fprop_result)
 
-    def error_gradient(self, input, error):
-        if self.shape[1:] == input.size:
-            return self.error_gradient_dense(input, error)
+    def gradient(self, input, output):
+        #if self.shape[1:] == input.size:
+        if True:
+            return self.gradient_dense(input, output)
         else:
-            return self.error_gradient_conv(input, error)
-
+            return self.gradient_conv(input, output)
 
     def fprop_dense(self, input):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         result = input.dot(w.T()) + input.ones_vector.dot(h_bias)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def bprop_dense(self, input, fprop_result=None):
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         result = input.dot(w) + input.ones_vector.dot(v_bias)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def fprop_conv(self, input):
@@ -179,9 +165,9 @@ class LinearLayer(Layer):
 
         w, v_bias, h_bias = self.params
 
-        assert( not numpy.isnan(w.get()).any())
-        assert( not numpy.isnan(v_bias.get()).any())
-        assert( not numpy.isnan(h_bias.get()).any())
+        assert not numpy.isnan(w.get()).any()
+        assert not numpy.isnan(v_bias.get()).any()
+        assert not numpy.isnan(h_bias.get()).any()
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -238,8 +224,8 @@ class LinearLayer(Layer):
             0
         )
         
-        assert( not numpy.isnan(input.get()).any())
-        assert( not numpy.isnan(w.get()).any())
+        assert(not numpy.isnan(input.get()).any())
+        assert(not numpy.isnan(w.get()).any())
 
         # Perform convolution
         cudnn.cudnnConvolutionForward(
@@ -271,12 +257,12 @@ class LinearLayer(Layer):
             output.data()
         )
 
-        assert( not numpy.isnan(output.get()).any())
+        assert not numpy.isnan(output.get()).any()
         return output
 
     def bprop_conv(self, input, fprop_result=None):
         assert len(input.shape) == 4
-        w, v_bias, h_bias = self.params
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -314,11 +300,18 @@ class LinearLayer(Layer):
             output.data()
         )
 
-        assert( not numpy.isnan(output.get()).any())
+        assert not numpy.isnan(output.get()).any()
         return output
 
-    def loglikelihood_gradient(self, v, h):
-        w, v_bias, h_bias = self.params
+    def gradient_dense(self, v, h):
+
+        return {
+            'w': h.T().dot(v),
+            'h_bias': h.T().dot(h.ones_vector)
+        }
+
+
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -362,26 +355,26 @@ class LinearLayer(Layer):
             h_bias_grad.data()
         )
 
-        assert( not numpy.isnan(w.get()).any())
-        assert( not numpy.isnan(h_bias.get()).any())
+        assert not numpy.isnan(w.get()).any()
+        assert not numpy.isnan(h_bias.get()).any()
         return [w_grad, v_bias_grad, h_bias_grad]
 
-    def error_gradient_dense(self, input, error):
-        w, v_bias, h_bias = self.params
+    '''
+    def gradient_dense(self, input, output):
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
         w_grad = tensor.zeros(w.shape)
         v_bias_grad = tensor.zeros(v_bias.shape)
         h_bias_grad = tensor.zeros(h_bias.shape)
-        tensor.sgemm(error.T(), input, w_grad, alpha=1, beta=0)
-        tensor.sgemv(h_bias_grad, error.T(), input.ones_vector.T(), alpha=1, beta=0)
-        grads = [w_grad, v_bias_grad, h_bias_grad]
-        assert( not numpy.isnan(w_grad.get()).any())
-        assert( not numpy.isnan(v_bias_grad.get()).any())
-        assert( not numpy.isnan(h_bias_grad.get()).any())
-        return grads
-        #return {w: w_grad, v_bias:v_bias_grad, h_bias:h_bias_grad}
+        tensor.sgemm(output.T(), input, w_grad, alpha=1, beta=0)
+        tensor.sgemv(h_bias_grad, output.T(), input.ones_vector.T(), alpha=1, beta=0)
+        assert not numpy.isnan(w_grad.get()).any()
+        assert not numpy.isnan(v_bias_grad.get()).any()
+        assert not numpy.isnan(h_bias_grad.get()).any()
+        return {'w': w_grad, 'v_bias': v_bias_grad, 'h_bias': h_bias_grad}
+    '''
 
-    def error_gradient_conv(self, input, error):
-        w, v_bias, h_bias = self.params
+    def gradient_conv(self, input, output):
+        w, v_bias, h_bias = self.params['w'], self.params['v_bias'], self.params['h_bias']
 
         cudnn.cudnnSetTensor4dDescriptor(
             self.input_descriptor,
@@ -394,7 +387,7 @@ class LinearLayer(Layer):
             self.output_descriptor,
             cudnn.cudnnTensorFormat['CUDNN_TENSOR_NCHW'],
             cudnn.cudnnDataType['CUDNN_DATA_FLOAT'],
-            *error.shape
+            *output.shape
         )
 
         w_grad = tensor.zeros(w.shape)
@@ -408,7 +401,7 @@ class LinearLayer(Layer):
             self.input_descriptor,
             input.data(),
             self.output_descriptor,
-            error.data(),
+            output.data(),
             self.convolution_descriptor,
             1,
             self.filter_descriptor,
@@ -419,34 +412,33 @@ class LinearLayer(Layer):
             cudnn_context,
             1,
             self.output_descriptor,
-            error.data(),
+            output.data(),
             1,
             self.bias_descriptor,
             h_bias_grad.data()
         )
 
-        assert( not numpy.isnan(w_grad.get()).any())
-        assert( not numpy.isnan(h_bias_grad.get()).any())
+        assert not numpy.isnan(w_grad.get()).any()
+        assert not numpy.isnan(h_bias_grad.get()).any()
         return [w_grad, v_bias_grad, h_bias_grad]
 
-#-----------------------  DenseLayer  --------------------------
+
+# -----------------------  DenseLayer  --------------------------
 class DenseLayer(LinearLayer):
     def __init__(self, **kwargs):
         super(DenseLayer, self).__init__(**kwargs)
-
-
-    def loglikelihood_gradient(self, v, h):
-        return [ h.T().dot(v),  v.T().dot(v.ones_vector), h.T().dot(h.ones_vector)]
 
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(shape=" + str(self.feature_shape) + ")"
 
     def show(self):
-        w = self.params[0]
-        if w.shape[1] not in (1,3): return
-        cv2.imshow(self.name, self.params[0].mosaic().get()/10+.5)
+        w = self.params['w']
+        if w.shape[1] not in (1, 3):
+            return
+        cv2.imshow(self.name, self.params['w'].mosaic().get()/10+.5)
         cv2.moveWindow(self.name, 0, 0)
         cv2.waitKey(1)
+
 
 class ActivationLayer(Layer):
     def __init__(self, activation, **kwargs):
@@ -457,16 +449,21 @@ class ActivationLayer(Layer):
 
     def fprop(self, input):
         result = self.activation(input)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
-    def bprop(self, input, fprop_result):
-        result = self.d_activation(input, fprop_result)
-        assert( not numpy.isnan(result.get()).any())
+    def bprop(self, input, fprop_result=None):
+        if fprop_result:
+            result = self.d_activation(input, fprop_result)
+        else:
+            f = self.activation(input)
+            result = (tensor.Tensor(numpy.ones_like(f.get()))-f) * f
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(activation='" + self.activation.__name__ + "')"
+
 
 class DropoutLayer(Layer):
     def __init__(self, **kwargs):
@@ -475,12 +472,6 @@ class DropoutLayer(Layer):
         self.p_include = float(1-self.p_exclude)
         self.output_shape = self.input_shape
 
-    def backprop(self, input, target):
-        bernoulli = tensor.bernoulli(input.shape, prob=self.p_include)
-        input = (input*bernoulli)/self.p_include
-        input_error = self.bprop(self.next.backprop(self.fprop(input), target))*bernoulli*self.p_include
-        return input_error
-
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(p=" + str(self.p_exclude) + ")"
 
@@ -488,10 +479,10 @@ class DropoutLayer(Layer):
 class MaxPoolingLayer(Layer):
     def __init__(self, **kwargs):
         super(MaxPoolingLayer, self).__init__(**kwargs)
-        if not 'padding' in kwargs:
-            kwargs['padding'] = (0,0)
-        if not 'stride' in kwargs:
-            kwargs['stride'] = (1,1)
+        if 'padding' not in kwargs:
+            kwargs['padding'] = (0, 0)
+        if 'stride' not in kwargs:
+            kwargs['stride'] = (1, 1)
 
         self.shape = kwargs['shape']
         self.padding = kwargs['padding']
@@ -546,10 +537,9 @@ class MaxPoolingLayer(Layer):
         )
         return output
 
-
-
     def __str__(self):
         return self.name + " - " + self.__class__.__name__ + "(p=" + str(self.p_exclude) + ")"
+
 
 class ReshapeLayer(Layer):
     def __init__(self, **kwargs):
@@ -559,29 +549,29 @@ class ReshapeLayer(Layer):
         assert(reduce(operator.__mul__, self.input_shape, 1) == reduce(operator.__mul__, self.output_shape, 1))
 
     def fprop(self, input):
-        assert(input.shape[1:] == self.input_shape)
+        assert input.shape[1:] == self.input_shape
         input.shape = (input.shape[0],) + self.output_shape
         return input
 
     def bprop(self, input, fprop_result=None):
-        assert(input.shape[1:] == self.output_shape)
+        assert input.shape[1:] == self.output_shape
         input.shape = (input.shape[0],) + self.input_shape
         return input
 
 
-#-----------------------  ConvLayer  --------------------------
+# -----------------------  ConvLayer  --------------------------
 class GadannConvLayer(LinearLayer):
     def __init__(self, **kwargs):
         super(ConvLayer, self).__init__(**kwargs)
-        #self.conv_step = kwargs['conv_step']
-        #self.w.axes = ['features_out', 'features_in', 'height', 'width']
+        # self.conv_step = kwargs['conv_step']
+        # self.w.axes = ['features_out', 'features_in', 'height', 'width']
 
     def fprop(self, input):
         w, v_bias, h_bias = self.params
         result = Tensor((input.shape[0],w.shape[0])+tuple([x-y for x,y in zip(input.shape[-2:],w.shape[-2:])]))
         grid = (result.shape[-2]/16,result.shape[-1]/16,result.shape[0])
         conv2d_16x16_kernel(input.gpuarray, w.gpuarray, h_bias.gpuarray, result.gpuarray, numpy.uint32(self.w.shape[1]), numpy.uint32(w.shape[0]), block=(16,16,1), grid=grid)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
     def bprop(self, input, fprop_result=None):
@@ -589,10 +579,10 @@ class GadannConvLayer(LinearLayer):
         result = tensor.zeros((input.shape[0],w.shape[1])+tuple([x+y for x,y in zip(input.shape[-2:],w.shape[-2:])]))
         grid = (input.shape[3]/16,input.shape[2]/16,1)
         bconv2d_16x16_kernel(input.gpuarray, w.gpuarray, v_bias.gpuarray, result.gpuarray, numpy.uint32(w.shape[0]), numpy.uint32(w.shape[1]), block=(16,16,1), grid=grid)
-        assert( not numpy.isnan(result.get()).any())
+        assert not numpy.isnan(result.get()).any()
         return result
 
-    def loglikelihood_gradient(self, v, h):
+    def gradient(self, v, h):
         w, v_bias, h_bias = self.params
         w_update = tensor.zeros(w.shape)
         v_bias_update = tensor.zeros(v_bias.shape)
@@ -606,13 +596,13 @@ class GadannConvLayer(LinearLayer):
         v_bias_grid = (1,1,1)
         kernels.iconv2d_v_bias_16x16_naive_kernel(v.gpuarray, v_bias_update.gpuarray, numpy.uint32(v.shape[1]-16), numpy.uint32(v.shape[2]-16), block=v_bias_block, grid=v_bias_grid)
 
-        assert( not numpy.isnan(w_update.get()).any()) 
-        assert( not numpy.isnan(v_bias_update.get()).any())
-        assert( not numpy.isnan(h_bias_update.get()).any())
+        assert not numpy.isnan(w_update.get()).any()
+        assert not numpy.isnan(v_bias_update.get()).any()
+        assert not numpy.isnan(h_bias_update.get()).any()
         return [w_update, v_bias_update, h_bias_update]
 
-#-----------------------  NumpyConvLayer  --------------------------
 
+# -----------------------  NumpyConvLayer  --------------------------
 class NumpyConvLayer(LinearLayer):
     def fprop(self, input):
         result = []

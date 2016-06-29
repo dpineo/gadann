@@ -18,7 +18,7 @@ else:
 _libcudnn = None
 for _libcudnn_libname in _libcudnn_libname_list:
     try:
-        _libcudnn = ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__),_libcudnn_libname))
+        _libcudnn = ctypes.cdll.LoadLibrary(_libcudnn_libname)
     except OSError:
         pass
     else:

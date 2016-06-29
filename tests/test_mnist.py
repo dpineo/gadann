@@ -21,50 +21,42 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 # DEALINGS IN THE SOFTWARE.
 
-import sys, os
-sys.path.append(os.path.abspath(__file__)[:-len('\\tests\\test_mnist.py')])
-
-import gadann
+import os
 import gzip
-import cPickle
+import pickle
 import numpy
 import unittest
 import cv2
 import logging
 import time
 
+import gadann
+
 logger = logging.getLogger(__name__)
+
 
 class TestMnist(unittest.TestCase):
     def setUp(self):
         logger.info('')
-        logger.info("----- Test Case: %s -----" % (self._testMethodName))
-        for line in self._testMethodDoc.replace('\t','').splitlines():
+        logger.info("----- Test Case: %s -----" % self._testMethodName)
+        for line in self._testMethodDoc.replace('\t', '').splitlines():
             logger.info(line)
 
-        with gzip.open(os.path.join(gadann.module_dir, '..', 'data', 'mnist.pkl.gz'),'rb') as file:
+        with gzip.open(os.path.join(gadann.module_dir, '..', 'data', 'mnist.pkl.gz'), 'rb') as file:
             ((self.train_features, self.train_labels),
             (self.valid_features, self.valid_labels),
-            (self.test_features, self.test_labels)) = cPickle.load(file)
+            (self.test_features, self.test_labels)) = pickle.load(file, encoding='latin1')
 
         self.train_features = self.train_features.reshape((50000, 1, 28, 28))
         self.test_features = self.test_features.reshape((10000, 1, 28, 28))
 
-        self.train_features = gadann.Tensor(self.train_features)
-        self.train_labels_onehot = gadann.Tensor(self.train_labels).as_onehot()
-        self.train_labels = gadann.Tensor(self.train_labels)
+        self.train_features = gadann.Tensor(self.train_features, batch_size=100)
+        self.train_labels = gadann.Tensor(self.train_labels, batch_size=100)
+        self.train_labels_onehot = self.train_labels.apply_batchwise(gadann.tensor.onehot)
 
-        self.test_features = gadann.Tensor(self.test_features)
-        self.test_labels_onehot = gadann.Tensor(self.test_labels).as_onehot()
-        self.test_labels = gadann.Tensor(self.test_labels)
-
-        self.train_features = gadann.TensorStream(self.train_features)
-        self.train_labels = gadann.TensorStream(self.train_labels)
-        self.train_labels_onehot = gadann.TensorStream(self.train_labels_onehot)
-
-        self.test_features = gadann.TensorStream(self.test_features)
-        self.test_labels = gadann.TensorStream(self.test_labels)
-        self.test_labels_onehot = gadann.TensorStream(self.test_labels_onehot)
+        self.test_features = gadann.Tensor(self.test_features, batch_size=100)
+        self.test_labels = gadann.Tensor(self.test_labels, batch_size=100)
+        self.test_labels_onehot = self.test_labels.apply_batchwise(gadann.tensor.onehot)
 
         numpy.random.seed(1234)
         self.start_time = time.time()
@@ -73,34 +65,22 @@ class TestMnist(unittest.TestCase):
         logger.info("Elapsed time: " + str(time.time() - self.start_time))
 
     def test_mnist_singlelayer(self):
-        '''LinearLayer->Softmax.
+        """ LinearLayer->Softmax.
         The Linear layers are fully connected and use cublas.
         Trained using batch gradient descent
-        '''
-        '''
+        """
+
         model = gadann.NeuralNetworkModel(
+            input_shape=(1, 28, 28),
             layers=[
-                gadann.DenseLayer(feature_shape=(1,28,28), n_features=10),
-                gadann.ActivationLayer(n_features=10, activation='softmax')
-            ]
-        )
-
-        updater=gadann.SgdUpdater(learning_rate=0.1, weight_cost=0)
-        #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
-        #updater=gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0)
-        '''
-        model = gadann.NeuralNetworkModel(
-            input_shape = (1,28,28),
-            layers = [
-                {'layer':gadann.LinearLayer,     'n_features':10},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.softmax}
+                {'layer': gadann.LinearLayer,     'n_features': 10},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.softmax}
             ],
-            updater = gadann.SgdUpdater(learning_rate=0.1, weight_cost=0.00)
+            updater=gadann.SgdUpdater(learning_rate=0.01, weight_cost=0.00)
         )
 
-        # TODO: reverse to model.train(sgd_trainer)
-        gadann.BatchGradientDescentTrainer(model, model.updater).train(
-            self.train_features, self.train_labels_onehot, n_epochs=1)
+        model.train_contrastive_divergence(self.train_features, n_epochs=10)
+        model.train_backprop(self.train_features, self.train_labels_onehot, n_epochs=10)
 
         train_accuracy = model.evaluate(self.test_features, self.test_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
@@ -108,98 +88,51 @@ class TestMnist(unittest.TestCase):
         logger.info("Test set accuracy = " + str(test_accuracy*100) + "%")
 
     def test_mnist_multilayer(self):
-        '''LinearLayer->Logistic->Linear->Softmax.
+        """ LinearLayer->Logistic->Linear->Softmax.
         The Linear layers are fully connected and use cublas.
         Trained using batch gradient descent
-        '''
+        """
 
-        '''
         model = gadann.NeuralNetworkModel(
+            input_shape=(1, 28, 28),
             layers=[
-                gadann.DropoutLayer(.2),
-                gadann.LinearLayer(feature_shape=(1,28,28), n_features=300),
-                gadann.ActivationLayer(activation='logistic'),
-                gadann.DropoutLayer(.5),
-                gadann.LinearLayer(feature_shape=(300,), n_features=10),
-                gadann.ActivationLayer(activation='softmax')
+                {'layer': gadann.LinearLayer, 'n_features': 500},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
+                {'layer': gadann.LinearLayer, 'n_features': 300},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
+                {'layer': gadann.LinearLayer, 'n_features': 10},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.softmax}
             ],
-        )
-        '''
-
-        model = gadann.NeuralNetworkModel(
-            input_shape = (1,28,28),
-            layers = [
-                {'layer':gadann.DropoutLayer,    'prob':.2},
-                {'layer':gadann.LinearLayer,     'n_features':300},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.logistic},
-                {'layer':gadann.DropoutLayer,    'prob':.5},
-                {'layer':gadann.LinearLayer,     'n_features':10},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.softmax}
-            ],
-            updater = gadann.RmspropUpdater(learning_rate=0.02, inertia=0.0, weight_cost=0.00)
+            #updater=gadann.SgdUpdater(learning_rate=0.01, weight_cost=0.0001)
+            updater=gadann.MomentumUpdater(learning_rate=0.01, inertia=0.9, weight_cost=0.0)
         )
 
-        '''
-        model = gadann.NeuralNetworkModel(shape = (1,28,28))
-        model.add(gadann.DropoutLayer,    prob=.2)
-        model.add(gadann.LinearLayer,     n_features=300)
-        model.add(gadann.ActivationLayer, activation=gadann.logistic)
-        model.add(gadann.DropoutLayer,    prob=.5)
-        model.add(gadann.LinearLayer,     n_features=10)
-        model.add(gadann.ActivationLayer, activation=gadann.softmax)
-        '''
-         
-        #updater=gadann.SgdUpdater(learning_rate=0.01, weight_cost=0)
-        #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
-        updater = gadann.RmspropUpdater(learning_rate=0.02, inertia=0.0, weight_cost=0.00)
-
-        
-        gadann.BatchGradientDescentTrainer(model,updater).train(self.train, n_epochs=10)
+        model.train_contrastive_divergence(self.train_features, n_epochs=10)
+        model.train_backprop(self.train_features, self.train_labels_onehot, n_epochs=10)
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
-        logger.info("Training set accuracy = " + str(train_accuracy*100) + "%")
-        logger.info("Test set accuracy = " + str(test_accuracy*100) + "%")
-
+        logger.info("Training set accuracy = " + str(train_accuracy * 100) + "%")
+        logger.info("Test set accuracy = " + str(test_accuracy * 100) + "%")
 
     def test_mnist_pretrained(self):
-        '''First pretrain a single LinearLayer, Then use in
+        """ First pretrain a single LinearLayer, Then use in
         LinearLayer->Logistic->Softmax model.
         The Linear layers are fully connected and use cublas.
         Trained using batch gradient descent
-        '''
-        '''
-        model = gadann.NeuralNetworkModel(
-            layers=[
-                gadann.LinearLayer(feature_shape=(1,28,28), n_features=512),
-            ]
-        )
-        #updater=gadann.SgdUpdater(learning_rate=0.1, weight_cost=0)
-        #updater=gadann.MomentumUpdater(learning_rate=0.1, inertia=0.9, weight_cost=0.01)
-        updater=gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0.0)
+        """
 
-        gadann.ContrastiveDivergenceTrainer(model,updater).train(self.train_features, n_epochs=10)
-
-        neural_net_model = gadann.NeuralNetworkModel(
-            layers=[
-                model.layers[0],
-                gadann.ActivationLayer(activation='logistic'),
-                gadann.LinearLayer(feature_shape=(512,), n_features=10),
-                gadann.ActivationLayer(n_features=10, activation='softmax')
-            ]
-        )
-        '''
         model = gadann.NeuralNetworkModel(
-            input_shape = (1,28,28),
-            layers = [
-                {'layer':gadann.DropoutLayer,    'prob':.2},
-                {'layer':gadann.LinearLayer,     'n_features':300},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.logistic},
-                {'layer':gadann.DropoutLayer,    'prob':.5},
-                {'layer':gadann.LinearLayer,     'n_features':10},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.softmax}
+            input_shape=(1, 28, 28),
+            layers=[
+                {'layer': gadann.DropoutLayer,    'prob': .2},
+                {'layer': gadann.LinearLayer,     'n_features': 300},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
+                {'layer': gadann.DropoutLayer,    'prob': .5},
+                {'layer': gadann.LinearLayer,     'n_features': 10},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.softmax}
             ],
-            updater = gadann.RmspropUpdater(learning_rate=0.02, inertia=0.0, weight_cost=0.00)
+            updater=gadann.RmspropUpdater(learning_rate=0.02, inertia=0.0, weight_cost=0.00)
         )
 
         #updater=gadann.SgdUpdater(learning_rate=0.1, weight_cost=0)
@@ -212,15 +145,14 @@ class TestMnist(unittest.TestCase):
 
         train_accuracy = neural_net_model.evaluate(self.train_features, self.train_labels)
         test_accuracy = neural_net_model.evaluate(self.test_features, self.test_labels)
-        print "Training set accuracy = " + str(train_accuracy*100) + "%"
-        print "Test set accuracy = " + str(test_accuracy*100) + "%"
-
+        print("Training set accuracy = " + str(train_accuracy*100) + "%")
+        print("Test set accuracy = " + str(test_accuracy*100) + "%")
 
     def test_mnist_singlelayer_cudnn(self):
-        '''CudnnConvLayer->Softmax.
+        """ CudnnConvLayer->Softmax.
         The Linear layers are convolutional and use cuDNN.
         Trained using batch gradient descent
-        '''
+        """
 
         model = gadann.NeuralNetworkModel(
             layers=[
@@ -228,7 +160,7 @@ class TestMnist(unittest.TestCase):
                 gadann.ActivationLayer(n_features=10, activation='softmax')
             ]
         )
-        print model
+        print(model)
 
         #updater=gadann.SgdUpdater(learning_rate=0.001, weight_cost=0)
         #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
@@ -237,19 +169,18 @@ class TestMnist(unittest.TestCase):
         #gadann.ContrastiveDivergenceTrainer(model,updater).train(self.train_features, n_epochs=10)
         gadann.BatchGradientDescentTrainer(model,updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
 
-        print model
+        print(model)
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
         logger.info("Training set accuracy = " + str(train_accuracy*100) + "%")
         logger.info("Test set accuracy = " + str(test_accuracy*100) + "%")
-        
-        
+
     def test_mnist_multilayer_cudnn(self):
-        '''CudnnConvLayer->Logistic->CudnnConvLayer->Softmax.
+        """ CudnnConvLayer->Logistic->CudnnConvLayer->Softmax.
         The Linear layers are convolutional and use cuDNN.
         Trained using batch gradient descent
-        '''
+        """
 
         model = gadann.NeuralNetworkModel(
             layers=[
@@ -263,8 +194,8 @@ class TestMnist(unittest.TestCase):
         #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
         updater=gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0.00)
 
-        #gadann.ContrastiveDivergenceTrainer(model,updater).train(self.train_features, n_epochs=10)
-        gadann.BatchGradientDescentTrainer(model,updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
+        gadann.ContrastiveDivergenceTrainer(model, updater).train(self.train_features, n_epochs=10)
+        gadann.BatchGradientDescentTrainer(model, updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
@@ -273,9 +204,9 @@ class TestMnist(unittest.TestCase):
         self.assertTrue(test_accuracy > .95)
 
     def test_mnist_pretrained_cudnn(self):
-        ''' 
+        """
         Uses NVIDIA cuDNN library for convolutions
-        '''
+        """
         self.train_features = self.train_features.tensor.get()
         self.train_features = numpy.reshape(self.train_features, (50000, 1, 28, 28))
         self.train_features = gadann.TensorStream(gadann.Tensor(self.train_features), batch_size=100)
@@ -303,35 +234,36 @@ class TestMnist(unittest.TestCase):
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
         logger.info("Training set accuracy = " + str(train_accuracy*100) + "%")
         logger.info("Test set accuracy = " + str(test_accuracy*100) + "%")
+        print("Training set accuracy = " + str(train_accuracy*100) + "%")
+        print("Test set accuracy = " + str(test_accuracy*100) + "%")
         self.assertTrue(test_accuracy > .95)
 
-        
     def test_mnist_localization(self):
-        '''CudnnConvLayer->Logistic->CudnnConvLayer->Softmax.
+        """ CudnnConvLayer->Logistic->CudnnConvLayer->Softmax.
         The Linear layers are convolutional and use cuDNN.
         Trained using batch gradient descent
-        '''
+        """
 
         model = gadann.NeuralNetworkModel(
-            input_shape = (1,28,28),
-            layers = [
-                {'layer':gadann.LinearLayer,     'n_features':512},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.logistic},
-                {'layer':gadann.LinearLayer,     'n_features':10},
-                {'layer':gadann.ActivationLayer, 'activation':gadann.softmax}
+            input_shape=(1, 28, 28),
+            layers=[
+                {'layer': gadann.LinearLayer,     'n_features': 512},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.logistic},
+                {'layer': gadann.LinearLayer,     'n_features': 10},
+                {'layer': gadann.ActivationLayer, 'activation': gadann.softmax}
             ],
-            updater = gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0.0001)
+            updater=gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0.0001)
         )
 
 
-        print model
+        print(model)
 
         #updater=gadann.SgdUpdater(learning_rate=0.001, weight_cost=0)
         #updater=gadann.MomentumUpdater(learning_rate=0.0001, inertia=0.0, weight_cost=0)
         #updater=gadann.RmspropUpdater(learning_rate=0.01, inertia=0.0, weight_cost=0.00)
 
         #gadann.ContrastiveDivergenceTrainer(model,updater).train(self.train_features, n_epochs=10)
-        gadann.BatchGradientDescentTrainer(model,model.updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
+        gadann.BatchGradientDescentTrainer(model, model.updater).train(self.train_features, self.train_labels_onehot, n_epochs=10)
 
         train_accuracy = model.evaluate(self.train_features, self.train_labels)
         test_accuracy = model.evaluate(self.test_features, self.test_labels)
@@ -365,7 +297,7 @@ class TestMnist(unittest.TestCase):
         cv2.imshow("probabilities_squeezed", probabilities_squeezed)
 
 
-        print probabilities_squeezed.min(), probabilities_squeezed.max(), probabilities_squeezed.mean()
+        print(probabilities_squeezed.min(), probabilities_squeezed.max(), probabilities_squeezed.mean())
         mnist_mosaic = numpy.squeeze(mnist_mosaic.get())
         cv2.imshow("mnist_mosaic", mnist_mosaic)
         cv2.waitKey(1)
@@ -378,12 +310,15 @@ class TestMnist(unittest.TestCase):
             #cv2.imshow("prob "+str(i), .1*mnist_mosaic_rgb + probabilities)
         cv2.waitKey(-1)
         
-        print model
+        print(model)
 
+
+
+#TestMnist("test_mnist_singlelayer").debug()
+TestMnist("test_mnist_multilayer").debug()
 
 #unittest.main(exit=False, verbosity=2)
 
-TestMnist("test_mnist_singlelayer").debug()
 #TestMnist("test_mnist_multilayer").debug()
 #TestMnist("test_mnist_pretrained").debug()
 
@@ -395,3 +330,5 @@ TestMnist("test_mnist_singlelayer").debug()
 
 #from gadann.utils import profile
 #profile('TestMnist("test_mnist_multilayer").debug()', locals())
+
+cv2.waitKey(-1)
